@@ -1,0 +1,54 @@
+{
+  "name": "nim-check",
+  "version": "1.0.0",
+  "description": "Live terminal availability & latency checker for NVIDIA NIM LLM models — ping 44 frontier models in parallel, animated real-time results.",
+  "author": "vava",
+  "license": "MIT",
+  "type": "module",
+  "main": "bin/nim-check.js",
+  "bin": {
+    "nim-check": "./bin/nim-check.js"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node bin/nim-check.js"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "nvidia",
+    "nim",
+    "llm",
+    "cli",
+    "ai",
+    "models",
+    "benchmark",
+    "latency",
+    "availability",
+    "deepseek",
+    "qwen",
+    "llama",
+    "mistral",
+    "glm",
+    "kimi",
+    "gpt",
+    "chatgpt",
+    "openai",
+    "api"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomaly/nim-check.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anomaly/nim-check/issues"
+  },
+  "homepage": "https://github.com/anomaly/nim-check#readme"
+}

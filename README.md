@@ -1,0 +1,183 @@
+<p align="center">
+  <img src="https://img.shields.io/npm/v/nim-check?color=76b900&label=npm&logo=npm" alt="npm version">
+  <img src="https://img.shields.io/node/v/nim-check?color=76b900&logo=node.js" alt="node version">
+  <img src="https://img.shields.io/npm/l/nim-check?color=76b900" alt="license">
+  <img src="https://img.shields.io/badge/models-44-76b900?logo=nvidia" alt="models count">
+</p>
+
+<h1 align="center">⚡ nim-check</h1>
+
+<p align="center">
+  <strong>Live terminal availability & latency checker for NVIDIA NIM LLM models</strong><br>
+  <sub>Ping 44 frontier models in parallel — watch results animate in real-time</sub>
+</p>
+
+<p align="center">
+  <a href="#-features">Features</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-usage">Usage</a> •
+  <a href="#-models">Models</a> •
+  <a href="#-how-it-works">How it works</a>
+</p>
+
+---
+
+## ✨ Features
+
+- **🚀 Parallel pings** — All 44 models tested simultaneously via native `fetch`
+- **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
+- **🏆 Smart ranking** — Top 3 fastest models highlighted with medals 🥇🥈🥉
+- **⏱ 4x reliability** — Each UP model gets 4 pings for accurate average latency
+- **🎨 Clean output** — Zero scrollback pollution, only final table remains
+- **📶 Status indicators** — UP ✅ · Timeout ⏱ · Down ❌
+
+---
+
+## 📦 Installation
+
+```bash
+# Global install (recommended)
+npm install -g nim-check
+
+# Or use directly with npx
+npx nim-check YOUR_API_KEY
+```
+
+**Requirements:** Node.js 18+
+
+---
+
+## 🚀 Usage
+
+```bash
+# Just run it — first time will prompt for API key
+nim-check
+```
+
+On first run, you'll see a setup wizard:
+
+```
+███╗   ██╗██╗███╗   ██╗██████╗ 
+████╗  ██║██║████╗  ██║██╔══██╗
+██╔██╗ ██║██║██╔██╗ ██║██║  ██║
+██║╚██╗██║██║██║╚██╗██║██║  ██║
+██║ ╚████║██║██║ ╚████║██████╔╝
+╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝╚═════╝ 
+───────────────────────────────────────
+        NIM CHECK v1.0.0
+        by vava · github.com/vavanesssa
+───────────────────────────────────────
+
+  First time? Let's set up your NVIDIA API key.
+  Get a free key at: https://build.nvidia.com
+
+  Enter your API key: nvapi-xxxx-xxxx
+
+  ✓ API key saved to ~/.nim-check
+```
+
+### Other ways to provide the key
+
+```bash
+# Pass directly
+nim-check nvapi-xxxx-your-key-here
+
+# Use environment variable
+NVIDIA_API_KEY=nvapi-xxx nim-check
+
+# Or add to your shell profile
+export NVIDIA_API_KEY=nvapi-xxxx-your-key-here
+nim-check
+```
+
+### Get your free API key
+
+1. Go to [build.nvidia.com](https://build.nvidia.com)
+2. Sign in / Sign up
+3. Click **"Get API Key"**
+4. Copy and use with `nim-check`
+
+---
+
+## 📊 Output Example
+
+```
+  ⚡ NIM Model Availability   ✅ 38 up  ⏱ 2 t/o  ❌ 4 down  complete ✓
+
+   #  Tier  Model                   Avg Ping  Status
+  ───  ────  ─────────────────────  ─────────  ───────────
+   1  S     🥇 Kimi K2.5                 299  ✅ UP     
+   2  S     🥈 GLM 5                     409  ✅ UP     
+   3  S     🥉 Qwen3 Coder 480B          523  ✅ UP     
+   4  S         DeepSeek V3.2            609  ✅ UP     
+  ...
+```
+
+---
+
+## 🤖 Models
+
+**44 models** across 4 tiers, sorted by capability:
+
+| Tier | Count | Models |
+|------|-------|--------|
+| **S** | 11 | Kimi K2.5, GLM 5, Qwen3 Coder 480B, Qwen3.5 400B VLM, Nemotron Nano 30B, DeepSeek V3.2, Nemotron Ultra 253B, Mistral Large 675B, Qwen3 235B, MiniMax M2.1, Devstral 2 |
+| **A** | 13 | GLM 4.7, Kimi K2 Thinking/Instruct, DeepSeek V3.1/Terminus, R1 Distill 14B, QwQ 32B, Qwen3 80B Thinking/Instruct, Qwen2.5 Coder 32B, MiniMax M2, Mistral Medium 3, Magistral Small |
+| **B** | 11 | Llama 4 Maverick/Scout, Llama 3.1 405B, Llama 3.3 70B, Nemotron Super 49B, R1 Distill 32B/8B, Colosseum 355B, GPT OSS 120B/20B, Stockmark 100B |
+| **C** | 9 | R1 Distill 7B, Seed OSS 36B, Step 3.5 Flash, Mixtral 8x22B, Ministral 14B, Granite 34B Code, Gemma 2 9B, Phi 3.5 Mini, Phi 4 Mini |
+
+### Why these models?
+
+- **S-tier:** Frontier models with best performance/capability
+- **A-tier:** Strong alternatives, often faster or specialized
+- **B-tier:** Solid performers, good for specific tasks
+- **C-tier:** Smaller models, edge-friendly, or older generations
+
+---
+
+## ⚙️ How it works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. Enter alternate screen buffer (like vim/htop/less)      │
+│  2. Ping ALL models in parallel                             │
+│  3. Re-ping UP models 3 more times for latency reliability  │
+│  4. Exit alternate screen                                   │
+│  5. Print final sorted table to stdout (stays in history)   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Result:** Clean terminal history with just the final table — no animation garbage.
+
+---
+
+## 📋 API Reference
+
+| Parameter | Description |
+|-----------|-------------|
+| `NVIDIA_API_KEY` | Environment variable for API key |
+| `<api-key>` | First positional argument |
+
+---
+
+## 🔧 Development
+
+```bash
+git clone https://github.com/anomaly/nim-check
+cd nim-check
+npm install
+npm start -- YOUR_API_KEY
+```
+
+---
+
+## 📄 License
+
+MIT © [vava](https://github.com/anomaly)
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ for the AI community</sub><br>
+  <sub>Star ⭐ this repo if you find it useful!</sub>
+</p>
