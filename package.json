@@ -1,27 +1,7 @@
 {
-  "name": "nim-check",
-  "version": "1.0.0",
-  "description": "Live terminal availability & latency checker for NVIDIA NIM LLM models — ping 44 frontier models in parallel, animated real-time results.",
-  "author": "vava",
-  "license": "MIT",
-  "type": "module",
-  "main": "bin/nim-check.js",
-  "bin": {
-    "nim-check": "./bin/nim-check.js"
-  },
-  "files": [
-    "bin/",
-    "README.md"
-  ],
-  "scripts": {
-    "start": "node bin/nim-check.js"
-  },
-  "dependencies": {
-    "chalk": "^5.4.1"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "name": "nimping",
+  "version": "0.1.0",
+  "description": "Find the fastest NVIDIA NIM coding models in seconds — ping 44 free LLM models optimized for code, pick the best one for OpenCode, Cursor, or any AI coding assistant.",
   "keywords": [
     "nvidia",
     "nim",
@@ -43,12 +23,34 @@
     "openai",
     "api"
   ],
+  "homepage": "https://github.com/vava-nessa/nimping#readme",
+  "bugs": {
+    "url": "https://github.com/vava-nessa/nimping/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anomaly/nim-check.git"
+    "url": "git+https://github.com/vava-nessa/nimping.git"
   },
-  "bugs": {
-    "url": "https://github.com/anomaly/nim-check/issues"
+  "license": "MIT",
+  "author": "vava",
+  "type": "module",
+  "main": "bin/nimping.js",
+  "bin": {
+    "nimping": "./bin/nimping.js"
   },
-  "homepage": "https://github.com/anomaly/nim-check#readme"
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/nimping.js"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

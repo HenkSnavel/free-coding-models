@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * @file nim-check.js
+ * @file nimping.js
  * @description Live terminal availability checker for NVIDIA NIM LLM models.
  *
  * 📖 How it works:
- *   → First run: wizard prompts for API key and saves to ~/.nim-check
+ *   → First run: wizard prompts for API key and saves to ~/.nimping
  *   → Subsequent runs: uses saved key automatically
  *   → Enters the ALTERNATE SCREEN BUFFER for animation (same technique as vim/htop/less)
  *   → Phase 1: pings all 44 models in parallel via native fetch (Node 18+)
@@ -12,9 +12,9 @@
  *   → Exits alt screen, then prints the final table ONCE to normal stdout
  *
  * 📖 Usage:
- *   nim-check
- *   nim-check <NVIDIA_API_KEY>
- *   NVIDIA_API_KEY=nvapi-xxx nim-check
+ *   nimping
+ *   nimping <NVIDIA_API_KEY>
+ *   NVIDIA_API_KEY=nvapi-xxx nimping
  *
  * @exports (CLI binary)
  */
@@ -29,7 +29,7 @@ const require = createRequire(import.meta.url)
 const readline = require('readline')
 
 // ─── Config path ──────────────────────────────────────────────────────────────
-const CONFIG_PATH = join(homedir(), '.nim-check')
+const CONFIG_PATH = join(homedir(), '.nimping')
 
 function loadApiKey() {
   try {
@@ -46,22 +46,12 @@ function saveApiKey(key) {
   } catch {}
 }
 
-// ─── ASCII Banner ─────────────────────────────────────────────────────────────
-const BANNER = chalk.greenBright(`
-███    ██ ██ ███    ███      ██████ ██   ██ ███████  ██████ ██   ██
-████   ██ ██ ████  ████     ██      ███████ █████   ██      █████  
-██ ██  ██ ██ ██  ████ ██     ██      ██   ██ ██      ██      ██  ██ 
-██  ██ ██ ██ ██   ██  ██     ██      ██   ██ ██      ██      ██   ██
-██   ████ ██ ██      ██      ██████ ██   ██ ███████  ██████ ██   ██
-`) + chalk.dim('        by vava · github.com/vavanesssa')
-
 // ─── First-run wizard ─────────────────────────────────────────────────────────
 async function promptApiKey() {
-  console.log(BANNER)
   console.log()
   console.log(chalk.dim('  🔑 Setup your NVIDIA API key'))
   console.log(chalk.dim('  📝 Get a free key at: ') + chalk.cyanBright('https://build.nvidia.com'))
-  console.log(chalk.dim('  💾 Key will be saved to ~/.nim-check'))
+  console.log(chalk.dim('  💾 Key will be saved to ~/.nimping'))
   console.log()
 
   const rl = readline.createInterface({
@@ -76,7 +66,7 @@ async function promptApiKey() {
       if (key) {
         saveApiKey(key)
         console.log()
-        console.log(chalk.green('  ✅ API key saved to ~/.nim-check'))
+        console.log(chalk.green('  ✅ API key saved to ~/.nimping'))
         console.log()
       }
       resolve(key || null)
@@ -211,9 +201,7 @@ function renderTable(results, pendingPings, frame) {
 
   const lines = [
     '',
-    BANNER,
-    '',
-    `  ${chalk.bold('⚡ NIM Model Availability')}   ` +
+    `  ${chalk.bold('⚡ NIM Coding Models')}   ` +
       chalk.greenBright(`✅ ${up}`) + chalk.dim(' up  ') +
       chalk.yellow(`⏱ ${timeout}`) + chalk.dim(' t/o  ') +
       chalk.red(`❌ ${down}`) + chalk.dim(' down  ') +
@@ -340,7 +328,7 @@ async function main() {
     if (!apiKey) {
       console.log()
       console.log(chalk.red('  ✖ No API key provided.'))
-      console.log(chalk.dim('  Run `nim-check` again or set NVIDIA_API_KEY env var.'))
+      console.log(chalk.dim('  Run `nimping` again or set NVIDIA_API_KEY env var.'))
       console.log()
       process.exit(1)
     }

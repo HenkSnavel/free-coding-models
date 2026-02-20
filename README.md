@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="https://img.shields.io/npm/v/nim-check?color=76b900&label=npm&logo=npm" alt="npm version">
-  <img src="https://img.shields.io/node/v/nim-check?color=76b900&logo=node.js" alt="node version">
-  <img src="https://img.shields.io/npm/l/nim-check?color=76b900" alt="license">
+  <img src="https://img.shields.io/npm/v/nimping?color=76b900&label=npm&logo=npm" alt="npm version">
+  <img src="https://img.shields.io/node/v/nimping?color=76b900&logo=node.js" alt="node version">
+  <img src="https://img.shields.io/npm/l/nimping?color=76b900" alt="license">
   <img src="https://img.shields.io/badge/models-44-76b900?logo=nvidia" alt="models count">
 </p>
 
-<h1 align="center">⚡ nim-check</h1>
+<h1 align="center">⚡ nimping</h1>
 
 <p align="center">
-  <strong>Find the fastest NVIDIA NIM models in seconds</strong><br>
-  <sub>Ping 44 free LLM models in parallel — pick the best one for OpenCode, Cursor, or any AI tool</sub>
+  <strong>Find the fastest NVIDIA NIM coding models in seconds</strong><br>
+  <sub>Ping 44 free LLM models optimized for code — pick the best one for OpenCode, Cursor, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
-  <img src="demo.gif" alt="nim-check demo" width="300">
+  <img src="demo.gif" alt="nimping demo" width="300">
 </p>
 
 <p align="center">
@@ -28,8 +28,7 @@
 
 ## ✨ Features
 
-> **Why nim-check?** NVIDIA offers 40+ free LLM models via NIM API — but which ones are actually available right now? Which one is fastest? Run `nim-check` and find out in seconds. Then plug the fastest model into OpenCode, Cursor, or any AI coding assistant and code for free.
-
+- **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
 - **🚀 Parallel pings** — All 44 models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
 - **🏆 Smart ranking** — Top 3 fastest models highlighted with medals 🥇🥈🥉
@@ -43,18 +42,18 @@
 
 ```bash
 # npm (global install — recommended)
-npm install -g nim-check
+npm install -g nimping
 
 # pnpm
-pnpm add -g nim-check
+pnpm add -g nimping
 
 # bun
-bun add -g nim-check
+bun add -g nimping
 
 # Or use directly with npx/pnpx/bunx
-npx nim-check YOUR_API_KEY
-pnpx nim-check YOUR_API_KEY
-bunx nim-check YOUR_API_KEY
+npx nimping YOUR_API_KEY
+pnpx nimping YOUR_API_KEY
+bunx nimping YOUR_API_KEY
 ```
 
 **Requirements:** Node.js 18+
@@ -65,7 +64,7 @@ bunx nim-check YOUR_API_KEY
 
 ```bash
 # Just run it — will prompt for API key if not set
-nim-check
+nimping
 ```
 
 Setup wizard:
@@ -73,25 +72,25 @@ Setup wizard:
 ```
   🔑 Setup your NVIDIA API key
   📝 Get a free key at: https://build.nvidia.com
-  💾 Key will be saved to ~/.nim-check
+  💾 Key will be saved to ~/.nimping
 
   Enter your API key: nvapi-xxxx-xxxx
 
-  ✓ API key saved to ~/.nim-check
+  ✅ API key saved to ~/.nimping
 ```
 
 ### Other ways to provide the key
 
 ```bash
 # Pass directly
-nim-check nvapi-xxxx-your-key-here
+nimping nvapi-xxxx-your-key-here
 
 # Use environment variable
-NVIDIA_API_KEY=nvapi-xxx nim-check
+NVIDIA_API_KEY=nvapi-xxx nimping
 
 # Or add to your shell profile
 export NVIDIA_API_KEY=nvapi-xxxx-your-key-here
-nim-check
+nimping
 ```
 
 ### Get your free API key
@@ -99,7 +98,7 @@ nim-check
 1. **Create NVIDIA Account** — Sign up at [build.nvidia.com](https://build.nvidia.com) with your email
 2. **Verify** — Confirm email, set privacy options, create NGC account, verify phone
 3. **Generate Key** — Go to Profile → API Keys → Generate API Key
-4. **Name it** — e.g., "nim-check" or "OpenCode-NIM"
+4. **Name it** — e.g., "nimping" or "OpenCode-NIM"
 5. **Set expiration** — Choose "Never" for convenience
 6. **Copy securely** — Key is shown only once!
 
@@ -107,9 +106,9 @@ nim-check
 
 ---
 
-## 🤖 Models
+## 🤖 Coding Models
 
-**44 models** across 4 tiers, sorted by capability:
+**44 coding models** across 4 tiers, sorted by code generation capability:
 
 | Tier | Count | Models |
 |------|-------|--------|
@@ -120,10 +119,10 @@ nim-check
 
 ### Why these models?
 
-- **S-tier:** Frontier models with best performance/capability
-- **A-tier:** Strong alternatives, often faster or specialized
-- **B-tier:** Solid performers, good for specific tasks
-- **C-tier:** Smaller models, edge-friendly, or older generations
+- **S-tier:** Best for coding — frontier models with top code generation & reasoning
+- **A-tier:** Great alternatives — often faster, strong at code tasks
+- **B-tier:** Solid coders — good for specific programming tasks
+- **C-tier:** Lightweight — smaller models, edge-friendly for code completion
 
 ---
 
@@ -133,7 +132,7 @@ Want to use NVIDIA NIM models in [OpenCode](https://github.com/opencode-ai/openc
 
 ### 1. Find your model
 
-Run `nim-check` to see which models are available and fast. Pick one that suits you (e.g., `meta/llama-3.1-70b-instruct`, `deepseek-ai/deepseek-v3.2`, `moonshotai/kimi-k2-instruct`).
+Run `nimping` to see which models are available and fast. Pick one that suits you (e.g., `meta/llama-3.1-70b-instruct`, `deepseek-ai/deepseek-v3.2`, `moonshotai/kimi-k2-instruct`).
 
 ### 2. Configure OpenCode
 
@@ -212,8 +211,8 @@ Run `/models` in OpenCode and select **NVIDIA NIM > kimi** (or your chosen model
 ## 🔧 Development
 
 ```bash
-git clone https://github.com/anomaly/nim-check
-cd nim-check
+git clone https://github.com/vava-nessa/nimping
+cd nimping
 npm install
 npm start -- YOUR_API_KEY
 ```
@@ -222,7 +221,7 @@ npm start -- YOUR_API_KEY
 
 ## 📄 License
 
-MIT © [vava](https://github.com/anomaly)
+MIT © [vava](https://github.com/vava-nessa)
 
 ---
 
