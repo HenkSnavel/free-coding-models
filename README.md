@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="demo.gif" alt="nim-check demo" width="100%">
+  <img src="demo.gif" alt="nim-check demo" width="300">
 </p>
 
 <p align="center">
