@@ -167,7 +167,68 @@ const getAvg = r => {
   return Math.round(successfulPings.reduce((a, b) => a + b) / successfulPings.length)
 }
 
-function renderTable(results, pendingPings, frame, cursor = null) {
+// 📖 Verdict order for sorting
+const VERDICT_ORDER = ['Perfect', 'Normal', 'Slow', 'Very Slow', 'Unstable', 'Not Active', 'Pending']
+
+// 📖 Get verdict for a model result
+const getVerdict = (r) => {
+  const avg = getAvg(r)
+  const wasUpBefore = r.pings.length > 0 && r.pings.some(p => p !== null && p !== 'TIMEOUT')
+  
+  if ((r.status === 'timeout' || r.status === 'down') && wasUpBefore) return 'Unstable'
+  if (r.status === 'timeout' || r.status === 'down') return 'Not Active'
+  if (avg === Infinity) return 'Pending'
+  if (avg < 400) return 'Perfect'
+  if (avg < 1000) return 'Normal'
+  if (avg < 3000) return 'Slow'
+  if (avg < 5000) return 'Very Slow'
+  if (avg < 10000) return 'Unstable'
+  return 'Unstable'
+}
+
+// 📖 Sort results using the same logic as renderTable - used for both display and selection
+const sortResults = (results, sortColumn, sortDirection) => {
+  return [...results].sort((a, b) => {
+    let cmp = 0
+    
+    switch (sortColumn) {
+      case 'rank':
+        cmp = a.idx - b.idx
+        break
+      case 'tier':
+        cmp = TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier)
+        break
+      case 'source':
+        cmp = 'NVIDIA NIM'.localeCompare('NVIDIA NIM') // All same for now
+        break
+      case 'model':
+        cmp = a.label.localeCompare(b.label)
+        break
+      case 'ping': {
+        const aPing = a.pings.length > 0 && a.pings[a.pings.length - 1] !== 'TIMEOUT' ? a.pings[a.pings.length - 1] : Infinity
+        const bPing = b.pings.length > 0 && b.pings[b.pings.length - 1] !== 'TIMEOUT' ? b.pings[b.pings.length - 1] : Infinity
+        cmp = aPing - bPing
+        break
+      }
+      case 'avg':
+        cmp = getAvg(a) - getAvg(b)
+        break
+      case 'status':
+        cmp = a.status.localeCompare(b.status)
+        break
+      case 'verdict': {
+        const aVerdict = getVerdict(a)
+        const bVerdict = getVerdict(b)
+        cmp = VERDICT_ORDER.indexOf(aVerdict) - VERDICT_ORDER.indexOf(bVerdict)
+        break
+      }
+    }
+    
+    return sortDirection === 'asc' ? cmp : -cmp
+  })
+}
+
+function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc') {
   const up      = results.filter(r => r.status === 'up').length
   const down    = results.filter(r => r.status === 'down').length
   const timeout = results.filter(r => r.status === 'timeout').length
@@ -179,31 +240,18 @@ function renderTable(results, pendingPings, frame, cursor = null) {
       ? chalk.dim(`pinging — ${pendingPings} in flight…`)
       : chalk.dim('continuous monitoring ✓')
 
-  // 📖 Sort models by Tier (S+ to C) and then by AVG Latency within tier
-  const sorted = [...results].sort((a, b) => {
-    const tierA = TIER_ORDER.indexOf(a.tier)
-    const tierB = TIER_ORDER.indexOf(b.tier)
-    if (tierA !== tierB) return tierA - tierB
-    return getAvg(a) - getAvg(b)
-  })
+  // 📖 Column widths (generous spacing with margins)
+  const W_RANK = 6
+  const W_TIER = 6
+  const W_SOURCE = 14
+  const W_MODEL = 26
+  const W_PING = 10
+  const W_AVG = 9
+  const W_STATUS = 18
+  const W_VERDICT = 16
 
-  // 📖 Compute best model in each tier — only for UP models with all 4 pings complete
-  const bestInTierIds = []
-  for (const t of TIER_ORDER) {
-    const inTier = results.filter(r => r.tier === t && r.status === 'up' && r.ping1 && r.ping2 && r.ping3 && r.ping4)
-    if (inTier.length > 0) {
-      const best = inTier.reduce((prev, curr) => getAvg(curr) < getAvg(prev) ? curr : prev)
-      bestInTierIds.push(best.idx)
-    }
-  }
-
-  const W  = COL_MODEL
-  const W_PROVIDER = 12  // 📖 Width for Provider column
-  const W_PING = 9        // 📖 Width for Ping column (no "ms" suffix)
-  const W_AVG = 9         // 📖 Width for Avg Ping column (no "ms" suffix)
-  const W_SPEED = 13      // 📖 Width for Speed column
-  // 📖 col() — right-aligns text in a fixed-width column, no borders, just spaces
-  const col = (txt, w) => txt.padStart(w)
+  // 📖 Sort models using the shared helper
+  const sorted = sortResults(results, sortColumn, sortDirection)
 
   const lines = [
     '',
@@ -213,116 +261,147 @@ function renderTable(results, pendingPings, frame, cursor = null) {
       chalk.red(`❌ ${down}`) + chalk.dim(' down  ') +
       phase,
     '',
-    // 📖 Header row — same spacing as data rows, dim text
-    `  ${chalk.dim(col('#', 3))}  ${chalk.dim('Tier'.padEnd(4))}  ${chalk.dim('Provider'.padEnd(W_PROVIDER))}  ${chalk.dim('Model'.padEnd(W))}  ` +
-      `  ${chalk.dim('Ping'.padStart(W_PING))}  ${chalk.dim('Avg'.padStart(W_AVG))}  ${chalk.dim('Status'.padEnd(14))}  ${chalk.dim('Speed')}`,
-    // 📖 Thin underline under header using dim dashes
-    `  ${chalk.dim('─'.repeat(3))}  ${'─'.repeat(4)}  ${'─'.repeat(W_PROVIDER)}  ${'─'.repeat(W)}  ` +
-      `  ${chalk.dim('─'.repeat(W_PING))}  ${chalk.dim('─'.repeat(W_AVG))}  ${chalk.dim('─'.repeat(14))}  ${chalk.dim('─'.repeat(W_SPEED))}`,
   ]
+
+  // 📖 Header row with sorting indicators
+  // 📖 NOTE: padEnd on chalk strings counts ANSI codes, breaking alignment
+  // 📖 Solution: build plain text first, then colorize
+  const dir = sortDirection === 'asc' ? '↑' : '↓'
+  
+  const rankH    = 'Rank'
+  const tierH    = 'Tier'
+  const sourceH  = 'Source'
+  const modelH   = 'Model'
+  const pingH    = sortColumn === 'ping' ? dir + ' Ping' : 'Ping'
+  const avgH     = sortColumn === 'avg' ? dir + ' Avg' : 'Avg'
+  const statusH  = 'Status'
+  const verdictH = sortColumn === 'verdict' ? dir + ' Verdict' : 'Verdict'
+  
+  // 📖 Now colorize after padding is calculated on plain text
+  const rankH_c    = chalk.dim(rankH.padEnd(W_RANK))
+  const tierH_c    = chalk.dim(tierH.padEnd(W_TIER))
+  const sourceH_c  = chalk.dim(sourceH.padEnd(W_SOURCE))
+  const modelH_c   = chalk.dim(modelH.padEnd(W_MODEL))
+  const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : chalk.dim(pingH.padEnd(W_PING))
+  const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : chalk.dim(avgH.padEnd(W_AVG))
+  const statusH_c  = chalk.dim(statusH.padEnd(W_STATUS))
+  const verdictH_c = sortColumn === 'verdict' ? chalk.bold.cyan(verdictH.padEnd(W_VERDICT)) : chalk.dim(verdictH.padEnd(W_VERDICT))
+  
+  // 📖 Header with proper spacing
+  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sourceH_c + '  ' + modelH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + statusH_c + '  ' + verdictH_c)
+  
+  // 📖 Separator line
+  lines.push(
+    '  ' + 
+    chalk.dim('─'.repeat(W_RANK)) + '  ' +
+    chalk.dim('─'.repeat(W_TIER)) + '  ' +
+    '─'.repeat(W_SOURCE) + '  ' +
+    '─'.repeat(W_MODEL) + '  ' +
+    chalk.dim('─'.repeat(W_PING)) + '  ' +
+    chalk.dim('─'.repeat(W_AVG)) + '  ' +
+    chalk.dim('─'.repeat(W_STATUS)) + '  ' +
+    chalk.dim('─'.repeat(W_VERDICT))
+  )
 
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i]
     const tierFn = TIER_COLOR[r.tier] ?? (t => chalk.white(t))
     
-    // 📖 Cursor shown by background color only, keep the number
     const isCursor = cursor !== null && i === cursor
-    const num = chalk.dim(String(r.idx).padStart(3))
     
-    const tier   = tierFn(r.tier.padEnd(4))
-    const provider = chalk.green('NVIDIA NIM'.padEnd(W_PROVIDER))
-    
-    // 📖 Emoji prefix for name: medal for best in tier, poop for slow (>3s avg)
-    const isBest = bestInTierIds.includes(r.idx)
-    let namePrefix = ''
-    let nameWidth = W
-    if (r.status === 'up' && r.ping1 && r.ping2 && r.ping3 && r.ping4) {
-      const avg = getAvg(r)
-      if (avg !== Infinity && avg > 3000) {
-        namePrefix = '💩 '
-        nameWidth = W - 2
-      } else if (isBest) {
-        namePrefix = '🥇 '
-        nameWidth = W - 2
-      }
-    }
-    const name = (namePrefix + r.label.slice(0, nameWidth)).padEnd(W)
-    let pingCell, avgCell, status, speedCell
+    // 📖 Left-aligned columns - pad plain text first, then colorize
+    const num = chalk.dim(String(r.idx).padEnd(W_RANK))
+    const tier = tierFn(r.tier.padEnd(W_TIER))
+    const source = chalk.green('NVIDIA NIM'.padEnd(W_SOURCE))
+    const name = r.label.slice(0, W_MODEL).padEnd(W_MODEL)
 
-    // 📖 Latest ping (just the number, no "ms")
+    // 📖 Latest ping (just number, no "ms") - build plain text, then colorize
     const latestPing = r.pings.length > 0 ? r.pings[r.pings.length - 1] : null
-    
+    let pingCell
     if (latestPing === null) {
-      pingCell = chalk.dim('—'.padStart(W_PING))
+      pingCell = chalk.dim('—'.padEnd(W_PING))
     } else if (latestPing === 'TIMEOUT') {
-      pingCell = chalk.red('TIMEOUT'.padStart(W_PING))
+      pingCell = chalk.red('TIMEOUT'.padEnd(W_PING))
     } else {
-      pingCell = msCell(latestPing)
+      const str = String(latestPing).padEnd(W_PING)
+      pingCell = latestPing < 500 ? chalk.greenBright(str) : latestPing < 1500 ? chalk.yellow(str) : chalk.red(str)
     }
 
-    // 📖 Avg ping from ALL successful pings (not timeouts) - same color as latest
+    // 📖 Avg ping (just number, no "ms")
     const avg = getAvg(r)
     const successfulPingCount = (r.pings || []).filter(p => p !== null && p !== 'TIMEOUT').length
-    
+    let avgCell
     if (avg !== Infinity) {
-      avgCell = msCell(avg)  // Same color as ping
+      const str = String(avg).padEnd(W_AVG)
+      avgCell = avg < 500 ? chalk.greenBright(str) : avg < 1500 ? chalk.yellow(str) : chalk.red(str)
     } else {
-      avgCell = chalk.dim('—'.padStart(W_AVG))
+      avgCell = chalk.dim('—'.padEnd(W_AVG))
     }
 
-    // 📖 Status column - show current state with ping count (fixed width)
+    // 📖 Status column - build plain text with emoji, pad, then colorize
+    // 📖 Emojis are 2 chars in JS but display as ~2 visual chars
+    let statusText, statusColor
     if (r.status === 'pending') {
-      status = chalk.dim.yellow(`${FRAMES[frame % FRAMES.length]} wait`.padEnd(14))
+      statusText = `${FRAMES[frame % FRAMES.length]} wait`
+      statusColor = (s) => chalk.dim.yellow(s)
     } else if (r.status === 'up') {
-      const statusText = ` UP (${successfulPingCount})`
-      status = chalk.bold.greenBright('✅') + chalk.dim(statusText.padEnd(11))
+      statusText = `✅ UP (${successfulPingCount})`
+      statusColor = (s) => s
     } else if (r.status === 'timeout') {
-      const statusText = ` TIMEOUT (${successfulPingCount})`
-      status = chalk.bold.yellow('⏱') + chalk.dim(statusText.padEnd(10))
+      statusText = `⏱ TIMEOUT (${successfulPingCount})`
+      statusColor = (s) => chalk.yellow(s)
     } else if (r.status === 'down') {
       const code = (r.httpCode ?? 'ERR').slice(0, 3)
-      status = chalk.bold.red('❌') + chalk.red(` ${code}`.padEnd(11))
+      statusText = `❌ ${code}`
+      statusColor = (s) => chalk.red(s)
     } else {
-      status = chalk.dim('?'.padEnd(14))
+      statusText = '?'
+      statusColor = (s) => chalk.dim(s)
     }
+    const status = statusColor(statusText.padEnd(W_STATUS))
 
-    // 📖 Speed column - recommendations based on avg ping with emojis
-    // 📖 If model was UP before but now timeout/down, mark as unstable
+    // 📖 Verdict column - build plain text with emoji, pad, then colorize
     const wasUpBefore = r.pings.length > 0 && r.pings.some(p => p !== null && p !== 'TIMEOUT')
-    
+    let verdictText, verdictColor
     if ((r.status === 'timeout' || r.status === 'down') && wasUpBefore) {
-      speedCell = chalk.magenta('⚠️ Unstable'.padEnd(W_SPEED))
+      verdictText = '⚠️ Unstable'
+      verdictColor = (s) => chalk.magenta(s)
     } else if (r.status === 'timeout' || r.status === 'down') {
-      speedCell = chalk.dim('👻 Not Active'.padEnd(W_SPEED))
+      verdictText = '👻 Not Active'
+      verdictColor = (s) => chalk.dim(s)
     } else if (avg === Infinity) {
-      speedCell = chalk.dim('⏳ Pending'.padEnd(W_SPEED))
+      verdictText = '⏳ Pending'
+      verdictColor = (s) => chalk.dim(s)
     } else if (avg < 400) {
-      speedCell = chalk.greenBright('🚀 Perfect'.padEnd(W_SPEED))
+      verdictText = '🚀 Perfect'
+      verdictColor = (s) => chalk.greenBright(s)
     } else if (avg < 1000) {
-      speedCell = chalk.cyan('✅ Normal'.padEnd(W_SPEED))
+      verdictText = '✅ Normal'
+      verdictColor = (s) => chalk.cyan(s)
     } else if (avg < 3000) {
-      speedCell = chalk.yellow('🐢 Slow'.padEnd(W_SPEED))
+      verdictText = '🐢 Slow'
+      verdictColor = (s) => chalk.yellow(s)
     } else if (avg < 5000) {
-      speedCell = chalk.red('🐌 Very Slow'.padEnd(W_SPEED))
-    } else if (avg < 10000) {
-      speedCell = chalk.red.bold('⚠️ Unstable'.padEnd(W_SPEED))
+      verdictText = '🐌 Very Slow'
+      verdictColor = (s) => chalk.red(s)
     } else {
-      speedCell = chalk.red.bold('💀 Unusable'.padEnd(W_SPEED))
+      verdictText = '💀 Unusable'
+      verdictColor = (s) => chalk.red.bold(s)
     }
+    const speedCell = verdictColor(verdictText.padEnd(W_VERDICT))
 
-    // 📖 Dark green background for best models in each tier
-    // 📖 Dark magenta background for cursor selection (more readable)
-    const row = `  ${num}  ${tier}  ${provider}  ${name}  ${pingCell}  ${avgCell}  ${status}  ${speedCell}`
+    // 📖 Build row with double space between columns
+    const row = '  ' + num + '  ' + tier + '  ' + source + '  ' + name + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell
     
     if (isCursor) {
-      lines.push(chalk.bgRgb(139, 0, 139)(row))  // Dark magenta (more readable)
-    } else if (isBest && r.status === 'up') {
-      lines.push(chalk.bgRgb(0, 40, 0)(row))
+      lines.push(chalk.bgRgb(139, 0, 139)(row))
     } else {
       lines.push(row)
     }
   }
 
+  lines.push('')
+  lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Select  •  R/T/S/M/P/A/V Sort  •  Ctrl+C Exit'))
   lines.push('')
   return lines.join('\n')
 }
@@ -500,7 +579,17 @@ async function main() {
   }))
 
   // 📖 Add interactive selection state - cursor index and user's choice
-  const state = { results, pendingPings: 0, frame: 0, cursor: 0, selectedModel: null }
+  // 📖 sortColumn: 'rank'|'tier'|'source'|'model'|'ping'|'avg'|'status'|'verdict'
+  // 📖 sortDirection: 'asc' (default) or 'desc'
+  const state = { 
+    results, 
+    pendingPings: 0, 
+    frame: 0, 
+    cursor: 0, 
+    selectedModel: null,
+    sortColumn: 'avg',
+    sortDirection: 'asc'
+  }
 
   // 📖 Enter alternate screen — animation runs here, zero scrollback pollution
   process.stdout.write(ALT_ENTER)
@@ -524,6 +613,24 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
     
+    // 📖 Sorting keys: R=rank, T=tier, S=source, M=model, P=ping, A=avg, V=verdict
+    const sortKeys = {
+      'r': 'rank', 't': 'tier', 's': 'source', 'm': 'model',
+      'p': 'ping', 'a': 'avg', 'v': 'verdict'
+    }
+    
+    if (sortKeys[key.name]) {
+      const col = sortKeys[key.name]
+      // 📖 Toggle direction if same column, otherwise reset to asc
+      if (state.sortColumn === col) {
+        state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc'
+      } else {
+        state.sortColumn = col
+        state.sortDirection = 'asc'
+      }
+      return
+    }
+    
     if (key.name === 'up') {
       if (state.cursor > 0) {
         state.cursor--
@@ -544,12 +651,8 @@ async function main() {
     }
     
     if (key.name === 'return') { // Enter
-      const sorted = [...results].sort((a, b) => {
-        const tierA = TIER_ORDER.indexOf(a.tier)
-        const tierB = TIER_ORDER.indexOf(b.tier)
-        if (tierA !== tierB) return tierA - tierB
-        return getAvg(a) - getAvg(b)
-      })
+      // 📖 Use the same sorting as the table display
+      const sorted = sortResults(results, state.sortColumn, state.sortDirection)
       const selected = sorted[state.cursor]
       // 📖 Allow selecting ANY model (even timeout/down) - user knows what they're doing
       if (true) {
@@ -591,10 +694,10 @@ async function main() {
   // 📖 Animation loop: clear alt screen + redraw table at FPS with cursor
   const ticker = setInterval(() => {
     state.frame++
-    process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor))
+    process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection))
   }, Math.round(1000 / FPS))
 
-  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor))
+  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection))
 
   // ── Continuous ping loop — ping all models every 10 seconds forever ──────────
   
