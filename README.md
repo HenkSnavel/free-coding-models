@@ -83,6 +83,12 @@ bunx free-coding-models YOUR_API_KEY
 ```bash
 # Just run it — will prompt for API key if not set
 free-coding-models
+
+# Show only top-tier models (A+, S, S+)
+free-coding-models --best
+
+# Analyze for 10 seconds and output the most reliable model
+free-coding-models --fiable
 ```
 
 **How it works:**
@@ -287,6 +293,10 @@ OpenCode will automatically detect this file when launched and guide you through
 - **Ping timeout**: 15 seconds per attempt (slow models get more time)
 - **Ping interval**: 2 seconds between complete re-pings of all models (adjustable with W/X keys)
 - **Monitor mode**: Interface stays open forever, press Ctrl+C to exit
+
+**Flags:**
+- **--best** — Show only top-tier models (A+, S, S+)
+- **--fiable** — Analyze for 10 seconds and output the most reliable model in format `provider/model_id`
 
 **Keyboard shortcuts:**
 - **↑↓** — Navigate models
