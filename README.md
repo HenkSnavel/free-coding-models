@@ -229,12 +229,8 @@ MIT © [vava](https://github.com/vava-nessa)
   <sub>Built with ☕ and 🌹 by <a href="https://github.com/vava-nessa">vava</a></sub>
 </p>
 
-## 🛠 Contributing
-We welcome contributions! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to propose changes, file issues, or submit pull requests. All contributions are subject to the Code of Conduct.
-
-## 📚 FAQ
-**Q:** Do I need a paid NVIDIA account?  
-**A:** No, free accounts have free tier credits, but usage is limited. Check [build.nvidia.com](https://build.nvidia.com) for current quotas and limitations.
+## 📬 Contribute
+We welcome contributions! Feel free to open issues, submit pull requests, or get involved in the project.
 
 **Q:** Can I use this with other providers?  
 **A:** Yes, the tool is designed to be extensible; see the source for examples of customizing endpoints.
