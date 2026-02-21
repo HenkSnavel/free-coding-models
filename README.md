@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="demo.gif" alt="nimping demo" width="300">
+  <img src="demo.gif" alt="nimping demo" width="100%">
 </p>
 
 <p align="center">
@@ -224,7 +224,7 @@ npm start -- YOUR_API_KEY
 MIT © [vava](https://github.com/vava-nessa)
 
 ---
- 
+
 <p align="center">
   <sub>Built with ☕ and 🌹 by <a href="https://github.com/vava-nessa">vava</a></sub>
 </p>
@@ -232,10 +232,10 @@ MIT © [vava](https://github.com/vava-nessa)
 ## 📬 Contribute
 We welcome contributions! Feel free to open issues, submit pull requests, or get involved in the project.
 
-**Q:** Can I use this with other providers?  
+**Q:** Can I use this with other providers?
 **A:** Yes, the tool is designed to be extensible; see the source for examples of customizing endpoints.
 
-**Q:** How accurate are the latency numbers?  
+**Q:** How accurate are the latency numbers?
 **A:** They represent average round-trip times measured during testing; actual performance may vary based on network conditions.
 
 ## 📧 Support
