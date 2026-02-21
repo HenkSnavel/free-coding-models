@@ -33,13 +33,14 @@
 - **🚀 Parallel pings** — All 44 models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
 - **🏆 Smart ranking** — Top 3 fastest models highlighted with medals 🥇🥈🥉
-- **⏱ Continuous monitoring** — Pings all models every 10 seconds forever, never stops
+- **⏱ Continuous monitoring** — Pings all models every 2 seconds forever, never stops
 - **📈 Rolling averages** — Avg calculated from ALL successful pings since start
+- **📊 Uptime tracking** — Percentage of successful pings shown in real-time
 - **🔄 Auto-retry** — Timeout models keep getting retried, nothing is ever "given up on"
 - **🎮 Interactive selection** — Navigate with arrow keys directly in the table, press Enter to launch OpenCode
 - **🔌 Auto-configuration** — Detects NVIDIA NIM setup, installs if missing, sets as default model
 - **🎨 Clean output** — Zero scrollback pollution, interface stays open until Ctrl+C
-- **📶 Status indicators** — UP ✅ · Timeout ⏱ · Down ❌
+- **📶 Status indicators** — UP ✅ · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
 - **🔧 Multi-source support** — Extensible architecture via `sources.js` (add new providers easily)
 
 ---
@@ -86,8 +87,8 @@ free-coding-models
 
 **How it works:**
 1. **Ping phase** — All 44 models are pinged in parallel
-2. **Continuous monitoring** — Models are re-pinged every 10 seconds forever
-3. **Real-time updates** — Watch "Latest" and "Avg" columns update live
+2. **Continuous monitoring** — Models are re-pinged every 2 seconds forever
+3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to launch OpenCode
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode:
    - ✅ If configured → Sets model as default and launches OpenCode
@@ -182,7 +183,7 @@ If you prefer to configure OpenCode yourself:
 
 #### 1. Find your model
 
-Run `free-coding-models` to see which models are available and fast. The "Latest" column shows real-time latency, "Avg" shows rolling average.
+Run `free-coding-models` to see which models are available and fast. The "Latest" column shows real-time latency, "Avg" shows rolling average, and "Up%" shows uptime percentage (reliability over time).
 
 #### 2. Configure OpenCode
 
@@ -260,8 +261,8 @@ OpenCode will automatically detect this file when launched and guide you through
 ┌─────────────────────────────────────────────────────────────┐
 │  1. Enter alternate screen buffer (like vim/htop/less)      │
 │  2. Ping ALL models in parallel                             │
-│  3. Display real-time table with Latest/Avg columns         │
-│  4. Re-ping ALL models every 10 seconds (forever)          │
+│  3. Display real-time table with Latest/Avg/Up% columns     │
+│  4. Re-ping ALL models every 2 seconds (forever)           │
 │  5. Update rolling averages from ALL successful pings      │
 │  6. User can navigate with ↑↓ and select with Enter       │
 │  7. On Enter: stop monitoring, exit alt screen            │
@@ -271,7 +272,7 @@ OpenCode will automatically detect this file when launched and guide you through
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Result:** Continuous monitoring interface that stays open until you select a model or press Ctrl+C. Rolling averages give you accurate long-term latency data, and you can launch OpenCode with your chosen model in one keystroke.
+**Result:** Continuous monitoring interface that stays open until you select a model or press Ctrl+C. Rolling averages give you accurate long-term latency data, uptime percentage tracks reliability, and you can launch OpenCode with your chosen model in one keystroke.
 
 ---
 
@@ -283,10 +284,17 @@ OpenCode will automatically detect this file when launched and guide you through
 | `<api-key>` | First positional argument |
 
 **Configuration:**
-- **Ping timeout**: 6 seconds per attempt (models slower than this are unusable)
-- **Retry policy**: 2 attempts max per ping cycle (12 seconds total before moving to next model)
-- **Ping interval**: 10 seconds between complete re-pings of all models
+- **Ping timeout**: 15 seconds per attempt (slow models get more time)
+- **Ping interval**: 2 seconds between complete re-pings of all models (adjustable with W/X keys)
 - **Monitor mode**: Interface stays open forever, press Ctrl+C to exit
+
+**Keyboard shortcuts:**
+- **↑↓** — Navigate models
+- **Enter** — Select model and launch OpenCode
+- **R/T/O/M/P/A/S/V/U** — Sort by Rank/Tier/Origin/Model/Ping/Avg/Status/Verdict/Uptime
+- **W** — Decrease ping interval (faster pings)
+- **X** — Increase ping interval (slower pings)
+- **Ctrl+C** — Exit
 
 ---
 
