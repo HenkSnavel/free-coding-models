@@ -342,6 +342,43 @@ openclaw configure
 
 > 💡 **Why use remote NIM models with OpenClaw?** NVIDIA NIM serves models via a fast API — no local GPU required, no VRAM limits, free credits for developers. You get frontier-class coding models (DeepSeek V3, Kimi K2, Qwen3 Coder) without downloading anything.
 
+### Patching OpenClaw for full NVIDIA model support
+
+**Problem:** By default, OpenClaw only allows a few specific NVIDIA models in its allowlist. If you try to use a model that's not in the list, you'll get this error:
+
+```
+Model "nvidia/mistralai/devstral-2-123b-instruct-2512" is not allowed. Use /models to list providers, or /models <provider> to list models.
+```
+
+**Solution:** Patch OpenClaw's configuration to add ALL 47 NVIDIA models from `free-coding-models` to the allowlist:
+
+```bash
+# From the free-coding-models package directory
+node patch-openclaw.js
+```
+
+This script:
+- Backs up `~/.openclaw/agents/main/agent/models.json` and `~/.openclaw/openclaw.json`
+- Adds all 47 NVIDIA models with proper context window and token limits
+- Preserves existing models and configuration
+- Prints a summary of what was added
+
+**After patching:**
+
+1. Restart OpenClaw gateway:
+   ```bash
+   systemctl --user restart openclaw-gateway
+   ```
+
+2. Verify models are available:
+   ```bash
+   free-coding-models --openclaw
+   ```
+
+3. Select any model — no more "not allowed" errors!
+
+**Why this is needed:** OpenClaw uses a strict allowlist system to prevent typos and invalid models. The `patch-openclaw.js` script populates the allowlist with all known working NVIDIA models, so you can freely switch between them without manually editing config files.
+
 ---
 
 ## ⚙️ How it works

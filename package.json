@@ -41,6 +41,7 @@
   "files": [
     "bin/",
     "sources.js",
+    "patch-openclaw.js",
     "README.md",
     "LICENSE"
   ],
