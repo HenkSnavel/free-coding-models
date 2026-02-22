@@ -204,8 +204,10 @@ jobs:
             },
             (res) => {
               console.log('Discord response status:', res.statusCode)
+              res.resume() // 📖 Drain the response body so the socket closes cleanly
               if (res.statusCode >= 200 && res.statusCode < 300) {
                 console.log('✅ Discord notification sent')
+                process.exit(0)
               } else {
                 console.error('❌ Discord notification failed:', res.statusCode)
                 process.exit(1)

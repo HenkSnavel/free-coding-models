@@ -2,6 +2,16 @@
 
 ---
 
+## 0.1.46
+
+### Fixed
+- **Discord notification**: Fixed ECONNRESET error — drain response body with `res.resume()` and call `process.exit(0)` immediately after success so the Node process closes cleanly
+
+### Changed
+- **Discord link**: Updated invite URL to `https://discord.gg/5MbTnDC3Md` everywhere (README, TUI footer)
+
+---
+
 ## 0.1.45
 
 ### Fixed
