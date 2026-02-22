@@ -75,7 +75,7 @@ import chalk from 'chalk'
 import { createRequire } from 'module'
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { MODELS } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
 import { getAvg, getVerdict, getUptime, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
@@ -690,23 +690,44 @@ async function ping(apiKey, modelId) {
 }
 
 // ─── OpenCode integration ──────────────────────────────────────────────────────
-const OPENCODE_CONFIG = join(homedir(), '.config/opencode/opencode.json')
+// 📖 Platform-specific config path
+const isWindows = process.platform === 'win32'
+const isMac = process.platform === 'darwin'
+const isLinux = process.platform === 'linux'
+
+// 📖 OpenCode config location varies by platform
+// 📖 Windows: %APPDATA%\opencode\opencode.json (or sometimes ~/.config/opencode)
+// 📖 macOS/Linux: ~/.config/opencode/opencode.json
+const OPENCODE_CONFIG = isWindows 
+  ? join(homedir(), 'AppData', 'Roaming', 'opencode', 'opencode.json')
+  : join(homedir(), '.config', 'opencode', 'opencode.json')
+
+// 📖 Fallback to .config on Windows if AppData doesn't exist
+const OPENCODE_CONFIG_FALLBACK = join(homedir(), '.config', 'opencode', 'opencode.json')
+
+function getOpenCodeConfigPath() {
+  if (existsSync(OPENCODE_CONFIG)) return OPENCODE_CONFIG
+  if (isWindows && existsSync(OPENCODE_CONFIG_FALLBACK)) return OPENCODE_CONFIG_FALLBACK
+  return OPENCODE_CONFIG
+}
 
 function loadOpenCodeConfig() {
-  if (!existsSync(OPENCODE_CONFIG)) return { provider: {} }
+  const configPath = getOpenCodeConfigPath()
+  if (!existsSync(configPath)) return { provider: {} }
   try {
-    return JSON.parse(readFileSync(OPENCODE_CONFIG, 'utf8'))
+    return JSON.parse(readFileSync(configPath, 'utf8'))
   } catch {
     return { provider: {} }
   }
 }
 
 function saveOpenCodeConfig(config) {
-  const dir = join(homedir(), '.config/opencode')
+  const configPath = getOpenCodeConfigPath()
+  const dir = dirname(configPath)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
-  writeFileSync(OPENCODE_CONFIG, JSON.stringify(config, null, 2))
+  writeFileSync(configPath, JSON.stringify(config, null, 2))
 }
 
 // ─── Check NVIDIA NIM in OpenCode config ───────────────────────────────────────
@@ -739,11 +760,11 @@ async function startOpenCode(model) {
     console.log()
 
     const config = loadOpenCodeConfig()
-    const backupPath = `${OPENCODE_CONFIG}.backup-${Date.now()}`
+    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
 
     // 📖 Backup current config
-    if (existsSync(OPENCODE_CONFIG)) {
-      copyFileSync(OPENCODE_CONFIG, backupPath)
+    if (existsSync(getOpenCodeConfigPath())) {
+      copyFileSync(getOpenCodeConfigPath(), backupPath)
       console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
     }
 
@@ -771,7 +792,8 @@ async function startOpenCode(model) {
     const { spawn } = await import('child_process')
     const child = spawn('opencode', [], {
       stdio: 'inherit',
-      shell: true
+      shell: true,
+      detached: false
     })
 
     // 📖 Wait for OpenCode to exit
@@ -794,7 +816,8 @@ async function startOpenCode(model) {
     console.log(chalk.dim('  Starting OpenCode with installation prompt…'))
     console.log()
 
-    const installPrompt = `Please install NVIDIA NIM provider in OpenCode by adding this to ~/.config/opencode/opencode.json:
+    const configPath = getOpenCodeConfigPath()
+    const installPrompt = `Please install NVIDIA NIM provider in OpenCode by adding this to ${configPath}:
 
 {
   "provider": {
@@ -809,7 +832,7 @@ async function startOpenCode(model) {
   }
 }
 
-Then set env var: export NVIDIA_API_KEY=your_key_here
+${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_key_here'}
 
 After installation, you can use: opencode --model nvidia/${model.modelId}`
 
@@ -821,7 +844,8 @@ After installation, you can use: opencode --model nvidia/${model.modelId}`
     const { spawn } = await import('child_process')
     const child = spawn('opencode', [], {
       stdio: 'inherit',
-      shell: true
+      shell: true,
+      detached: false
     })
 
     // 📖 Wait for OpenCode to exit
@@ -842,7 +866,7 @@ After installation, you can use: opencode --model nvidia/${model.modelId}`
 
 // ─── Start OpenCode Desktop ─────────────────────────────────────────────────────
 // 📖 startOpenCodeDesktop: Same config logic as startOpenCode, but opens the Desktop app.
-// 📖 OpenCode Desktop (/Applications/OpenCode.app) shares config at ~/.config/opencode/opencode.json.
+// 📖 OpenCode Desktop shares config at the same location as CLI.
 // 📖 No need to wait for exit — Desktop app stays open independently.
 async function startOpenCodeDesktop(model) {
   const hasNim = checkNvidiaNimConfig()
@@ -853,10 +877,10 @@ async function startOpenCodeDesktop(model) {
     console.log()
 
     const config = loadOpenCodeConfig()
-    const backupPath = `${OPENCODE_CONFIG}.backup-${Date.now()}`
+    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
 
-    if (existsSync(OPENCODE_CONFIG)) {
-      copyFileSync(OPENCODE_CONFIG, backupPath)
+    if (existsSync(getOpenCodeConfigPath())) {
+      copyFileSync(getOpenCodeConfigPath(), backupPath)
       console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
     }
 
@@ -876,18 +900,43 @@ async function startOpenCodeDesktop(model) {
     console.log(chalk.dim('  Opening OpenCode Desktop…'))
     console.log()
 
-    // 📖 Launch Desktop app — no need to wait, it stays open independently
+    // 📖 Launch Desktop app based on platform
     const { exec } = await import('child_process')
-    exec('open -a OpenCode', (err) => {
+    
+    let command
+    if (isMac) {
+      command = 'open -a OpenCode'
+    } else if (isWindows) {
+      // 📖 On Windows, try common installation paths
+      // 📖 User installation: %LOCALAPPDATA%\Programs\OpenCode\OpenCode.exe
+      // 📖 System installation: C:\Program Files\OpenCode\OpenCode.exe
+      command = 'start "" "%LOCALAPPDATA%\\Programs\\OpenCode\\OpenCode.exe" 2>nul || start "" "%PROGRAMFILES%\\OpenCode\\OpenCode.exe" 2>nul || start OpenCode'
+    } else if (isLinux) {
+      // 📖 On Linux, try different methods
+      // 📖 Check if opencode-desktop exists, otherwise try xdg-open
+      command = 'opencode-desktop 2>/dev/null || xdg-open /usr/share/applications/opencode.desktop 2>/dev/null || flatpak run ai.opencode.OpenCode 2>/dev/null || snap run opencode 2>/dev/null || echo "OpenCode not found"'
+    }
+
+    exec(command, (err, stdout, stderr) => {
       if (err) {
-        console.error(chalk.red('  ✗ Could not open OpenCode Desktop — is it installed at /Applications/OpenCode.app?'))
+        console.error(chalk.red('  ✗ Could not open OpenCode Desktop'))
+        if (isWindows) {
+          console.error(chalk.dim('    Make sure OpenCode is installed from https://opencode.ai'))
+        } else if (isLinux) {
+          console.error(chalk.dim('    Install via: snap install opencode OR flatpak install ai.opencode.OpenCode'))
+          console.error(chalk.dim('    Or download from https://opencode.ai'))
+        } else {
+          console.error(chalk.dim('    Is it installed at /Applications/OpenCode.app?'))
+        }
       }
     })
   } else {
     console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
     console.log(chalk.dim('  Please configure it first. Config is shared between CLI and Desktop.'))
     console.log()
-    const installPrompt = `Add this to ~/.config/opencode/opencode.json:
+    
+    const configPath = getOpenCodeConfigPath()
+    const installPrompt = `Add this to ${configPath}:
 
 {
   "provider": {
@@ -902,7 +951,7 @@ async function startOpenCodeDesktop(model) {
   }
 }
 
-Then set env var: export NVIDIA_API_KEY=your_key_here`
+${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_key_here'}`
     console.log(chalk.cyan(installPrompt))
     console.log()
   }
