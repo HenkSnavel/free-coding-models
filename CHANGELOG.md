@@ -2,6 +2,13 @@
 
 ---
 
+## 0.1.33 — 2026-02-22
+
+### Fixed
+- **Column header alignment**: Fixed column headers misalignment issue caused by ANSI color codes interfering with text padding
+
+---
+
 ## 0.1.32 — 2026-02-22
 
 ### Changed

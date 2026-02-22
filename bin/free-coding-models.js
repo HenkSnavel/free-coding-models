@@ -430,10 +430,13 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const uptimeH  = sortColumn === 'uptime' ? dir + ' Up%' : 'Up%'
 
   // 📖 Helper to colorize first letter for keyboard shortcuts
+  // 📖 IMPORTANT: Pad PLAIN TEXT first, then apply colors to avoid alignment issues
   const colorFirst = (text, width, colorFn = chalk.yellow) => {
     const first = text[0]
     const rest = text.slice(1)
-    return (colorFn(first) + chalk.dim(rest)).padEnd(width)
+    const plainText = first + rest
+    const padding = ' '.repeat(Math.max(0, width - plainText.length))
+    return colorFn(first) + chalk.dim(rest + padding)
   }
 
   // 📖 Now colorize after padding is calculated on plain text
@@ -441,7 +444,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const tierH_c    = colorFirst('Tier', W_TIER)
   const originH_c  = sortColumn === 'origin' ? chalk.bold.cyan(originH.padEnd(W_SOURCE)) : colorFirst(originH, W_SOURCE)
   const modelH_c   = colorFirst(modelH, W_MODEL)
-  const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst('SWE%', W_SWE)
+  const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst(sweH, W_SWE)
   const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : colorFirst('Latest Ping', W_PING)
   const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : colorFirst('Avg Ping', W_AVG)
   const conditionH_c = sortColumn === 'condition' ? chalk.bold.cyan(conditionH.padEnd(W_STATUS)) : colorFirst('Condition', W_STATUS)
