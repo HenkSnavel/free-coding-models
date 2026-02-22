@@ -425,7 +425,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const sweH     = sortColumn === 'swe' ? dir + ' SWE%' : 'SWE%'
   const pingH    = sortColumn === 'ping' ? dir + ' Latest Ping' : 'Latest Ping'
   const avgH     = sortColumn === 'avg' ? dir + ' Avg Ping' : 'Avg Ping'
-  const statusH  = sortColumn === 'status' ? dir + ' Status' : 'Status'
+  const conditionH = sortColumn === 'condition' ? dir + ' Condition' : 'Condition'
   const verdictH = sortColumn === 'verdict' ? dir + ' Verdict' : 'Verdict'
   const uptimeH  = sortColumn === 'uptime' ? dir + ' Up%' : 'Up%'
 
@@ -441,15 +441,15 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const tierH_c    = colorFirst('Tier', W_TIER)
   const originH_c  = sortColumn === 'origin' ? chalk.bold.cyan(originH.padEnd(W_SOURCE)) : colorFirst(originH, W_SOURCE)
   const modelH_c   = colorFirst(modelH, W_MODEL)
-  const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst(sweH, W_SWE)
-  const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : colorFirst(pingH.replace('Latest ', ''), W_PING)
-  const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : colorFirst(avgH.replace('Avg ', ''), W_AVG)
-  const statusH_c  = sortColumn === 'status' ? chalk.bold.cyan(statusH.padEnd(W_STATUS)) : colorFirst(statusH, W_STATUS)
+  const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst('SWE%', W_SWE)
+  const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : colorFirst('Latest Ping', W_PING)
+  const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : colorFirst('Avg Ping', W_AVG)
+  const conditionH_c = sortColumn === 'condition' ? chalk.bold.cyan(conditionH.padEnd(W_STATUS)) : colorFirst('Condition', W_STATUS)
   const verdictH_c = sortColumn === 'verdict' ? chalk.bold.cyan(verdictH.padEnd(W_VERDICT)) : colorFirst(verdictH, W_VERDICT)
   const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
 
   // 📖 Header with proper spacing
-  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + originH_c + '  ' + modelH_c + '  ' + sweH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + statusH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
+  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + originH_c + '  ' + modelH_c + '  ' + sweH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + conditionH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
 
   // 📖 Separator line
   lines.push(
@@ -618,9 +618,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/L/A/S/V/U/E Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Tier  •  Z Mode  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/L/A/S/C/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Tier  •  Z Mode  •  Ctrl+C Exit`))
   lines.push('')
-  lines.push(chalk.dim('  Made with ') + '💖' + chalk.dim(' by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '💬 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/WKA3TwYVuZ\x1b\\Join our Discord! (link fixed)\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Read the docs on GitHub\x1b]8;;\x1b\\')
+  lines.push(chalk.dim('  Made with ') + '💖 & ☕' + chalk.dim(' by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '💬 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/WKA3TwYVuZ\x1b\\Join Free-Coding-Models Discord!\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Read the docs on GitHub\x1b]8;;\x1b\\')
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
@@ -1191,11 +1191,10 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
 
-    // 📖 Sorting keys: R=rank, T=tier, O=origin, M=model, L=latest ping, A=avg ping, S=status, V=verdict, U=uptime, E=SWE-bench
+    // 📖 Sorting keys: R=rank, T=tier, O=origin, M=model, L=latest ping, A=avg ping, S=SWE-bench, C=condition, V=verdict, U=uptime
     const sortKeys = {
       'r': 'rank', 't': 'tier', 'o': 'origin', 'm': 'model',
-      'l': 'ping', 'a': 'avg', 's': 'status', 'v': 'verdict', 'u': 'uptime',
-      'e': 'swe'
+      'l': 'ping', 'a': 'avg', 's': 'swe', 'c': 'condition', 'v': 'verdict', 'u': 'uptime'
     }
 
     if (sortKeys[key.name]) {
