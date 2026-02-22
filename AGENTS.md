@@ -18,12 +18,13 @@ This ensures the codebase remains in a working state at all times.
 
 When releasing a new version, follow this exact process:
 
-1. **Version Bump**: Update version in `package.json` (e.g., `0.1.16` → `0.1.17`)
-2. **Commit ALL Changed Files**: `git add . && git commit -m "0.1.17"`
+1. **Version Check**: Check if version already exists with `git log --oneline | grep "^[a-f0-9]\+ [0-9]"`
+2. **Version Bump**: Update version in `package.json` (e.g., `0.1.16` → `0.1.17`)
+3. **Commit ALL Changed Files**: `git add . && git commit -m "0.1.17"`
    - Always commit with just the version number as the message (e.g., "0.1.17")
    - Include ALL modified files in the commit (bin/, lib/, test/, README.md, CHANGELOG.md, etc.)
-3. **Push**: `git push origin main` — GitHub Actions will auto-publish to npm
-4. **Wait for npm Publish**:
+4. **Push**: `git push origin main` — GitHub Actions will auto-publish to npm
+5. **Wait for npm Publish":
    ```bash
    for i in $(seq 1 30); do sleep 10; v=$(npm view free-coding-models version 2>/dev/null); echo "Attempt $i: npm version = $v"; if [ "$v" = "0.1.17" ]; then echo "✅ published!"; break; fi; done
    ```
@@ -70,11 +71,15 @@ When releasing a new version, follow this exact process:
 - **CLI arg parsing** — all flags (--best, --fiable, --opencode, --openclaw, --tier)
 - **Package sanity** — package.json fields, bin entry exists, shebang, ESM imports
 
-## Changelog
+## Changelog (MANDATORY)
 
-After every dev session (feature, fix, refactor), add a succinct entry to `CHANGELOG.md`:
+**⚠️ CRITICAL:** After every dev session (feature, fix, refactor), add a succinct entry to `CHANGELOG.md` BEFORE pushing:
 
 - Use the current version from `package.json`
 - Add under the matching version header (or create a new one if the version was bumped)
 - List changes under `### Added`, `### Fixed`, or `### Changed` as appropriate
 - Keep entries short — one line per change is enough
+- Include ALL changes made during the session
+- Update CHANGELOG.md BEFORE committing and pushing
+
+**Why this is critical:** The changelog is the only historical record of what was changed in each version. Without it, users cannot understand what changed between versions.

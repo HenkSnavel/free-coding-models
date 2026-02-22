@@ -2,7 +2,7 @@
 
 ---
 
-## 0.1.19 — 2026-02-22
+## 0.1.20 — 2026-02-22
 
 ### Added
 - **Dynamic tier filtering**: Use E/D keys to filter models by tier during runtime
