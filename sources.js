@@ -27,7 +27,12 @@
  *   📖 Secondary: https://swe-rebench.com (independent evals, scores are lower)
  *   📖 Leaderboard tracker: https://www.marc0.dev/en/leaderboard
  *
- *   @exports Object containing all sources and their models
+ *   @exports nvidiaNim, groq, cerebras — model arrays per provider
+ *   @exports sources — map of { nvidia, groq, cerebras } each with { name, url, models }
+ *   @exports MODELS — flat array of [modelId, label, tier, sweScore, ctx, providerKey]
+ *
+ *   📖 MODELS now includes providerKey as 6th element so ping() knows which
+ *      API endpoint and API key to use for each model.
  */
 
 // 📖 NIM source - https://build.nvidia.com
@@ -86,18 +91,50 @@ export const nvidiaNim = [
   ['microsoft/phi-4-mini-instruct',                'Phi 4 Mini',          'C',  '14.0%', '128k'],
 ]
 
+// 📖 Groq source - https://console.groq.com
+// 📖 Free API keys available at https://console.groq.com/keys
+export const groq = [
+  ['llama-3.3-70b-versatile',              'Llama 3.3 70B',      'A-', '39.5%', '128k'],
+  ['meta-llama/llama-4-scout-17b-16e-preview', 'Llama 4 Scout',  'A',  '44.0%', '10M'],
+  ['meta-llama/llama-4-maverick-17b-128e-preview', 'Llama 4 Maverick', 'S', '62.0%', '1M'],
+  ['deepseek-r1-distill-llama-70b',        'R1 Distill 70B',     'A',  '43.9%', '128k'],
+  ['qwen-qwq-32b',                         'QwQ 32B',            'A+', '50.0%', '131k'],
+  ['moonshotai/kimi-k2-instruct',          'Kimi K2 Instruct',   'S',  '65.8%', '131k'],
+]
+
+// 📖 Cerebras source - https://cloud.cerebras.ai
+// 📖 Free API keys available at https://cloud.cerebras.ai
+export const cerebras = [
+  ['llama3.3-70b',                         'Llama 3.3 70B',      'A-', '39.5%', '128k'],
+  ['llama-4-scout-17b-16e-instruct',       'Llama 4 Scout',      'A',  '44.0%', '10M'],
+  ['qwen-3-32b',                           'Qwen3 32B',          'A+', '50.0%', '128k'],
+]
+
 // 📖 All sources combined - used by the main script
+// 📖 Each source has: name (display), url (API endpoint), models (array of model tuples)
 export const sources = {
   nvidia: {
     name: 'NIM',
+    url: 'https://integrate.api.nvidia.com/v1/chat/completions',
     models: nvidiaNim,
+  },
+  groq: {
+    name: 'Groq',
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    models: groq,
+  },
+  cerebras: {
+    name: 'Cerebras',
+    url: 'https://api.cerebras.ai/v1/chat/completions',
+    models: cerebras,
   },
 }
 
-// 📖 Flatten all models from all sources for backward compatibility
+// 📖 Flatten all models from all sources — each entry includes providerKey as 6th element
+// 📖 providerKey lets the main CLI know which API key and URL to use per model
 export const MODELS = []
 for (const [sourceKey, sourceData] of Object.entries(sources)) {
   for (const [modelId, label, tier, sweScore, ctx] of sourceData.models) {
-    MODELS.push([modelId, label, tier, sweScore, ctx])
+    MODELS.push([modelId, label, tier, sweScore, ctx, sourceKey])
   }
 }

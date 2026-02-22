@@ -2,7 +2,8 @@
   <img src="https://img.shields.io/npm/v/free-coding-models?color=76b900&label=npm&logo=npm" alt="npm version">
   <img src="https://img.shields.io/node/v/free-coding-models?color=76b900&logo=node.js" alt="node version">
   <img src="https://img.shields.io/npm/l/free-coding-models?color=76b900" alt="license">
-  <img src="https://img.shields.io/badge/nvidia%20nim%20models-44-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/models-53-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/providers-3-blue" alt="providers count">
 </p>
 
 <h1 align="center">free-coding-models</h1>
@@ -14,7 +15,7 @@
 <p align="center">
 
 ```
-1. Create a free API key on NVIDIA → https://build.nvidia.com
+1. Create a free API key (NVIDIA, Groq, or Cerebras)
 2. npm i -g free-coding-models
 3. free-coding-models
 ```
@@ -23,7 +24,7 @@
 
 <p align="center">
   <strong>Find the fastest coding LLM models in seconds</strong><br>
-  <sub>Ping free NVIDIA NIM models in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
+  <sub>Ping free models from NVIDIA NIM, Groq, and Cerebras in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
@@ -46,7 +47,9 @@
 ## ✨ Features
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
-- **🚀 Parallel pings** — All 44 models tested simultaneously via native `fetch`
+- **🌐 Multi-provider** — 53 models from NVIDIA NIM, Groq, and Cerebras — all free to use
+- **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, and test keys live
+- **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
 - **🏆 Smart ranking** — Top 3 fastest models highlighted with medals 🥇🥈🥉
 - **⏱ Continuous monitoring** — Pings all models every 2 seconds forever, never stops
@@ -59,8 +62,7 @@
 - **🦞 OpenClaw integration** — Sets selected model as default provider in `~/.openclaw/openclaw.json`
 - **🎨 Clean output** — Zero scrollback pollution, interface stays open until Ctrl+C
 - **📶 Status indicators** — UP ✅ · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
-- **🔧 Multi-source support** — Extensible architecture via `sources.js` (add new providers easily)
-- **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with E/D keys
+- **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
 
 ---
 
@@ -69,12 +71,14 @@
 Before using `free-coding-models`, make sure you have:
 
 1. **Node.js 18+** — Required for native `fetch` API
-2. **NVIDIA NIM account** — Free tier available at [build.nvidia.com](https://build.nvidia.com)
-3. **API key** — Generate one from Profile → API Keys → Generate API Key
-4. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
-5. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
+2. **At least one free API key** — pick any or all of:
+   - **NVIDIA NIM** — [build.nvidia.com](https://build.nvidia.com) → Profile → API Keys → Generate
+   - **Groq** — [console.groq.com/keys](https://console.groq.com/keys) → Create API Key
+   - **Cerebras** — [cloud.cerebras.ai](https://cloud.cerebras.ai) → API Keys → Create
+3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
+4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** Without OpenCode/OpenClaw installed, you can still benchmark models and get latency data.
+> 💡 **Tip:** You don't need all three providers. One key is enough to get started. Add more later via the Settings screen (`P` key).
 
 ---
 
@@ -152,54 +156,98 @@ When you run `free-coding-models` without `--opencode` or `--openclaw`, you get 
 Use `↑↓` arrows to select, `Enter` to confirm. Then the TUI launches with your chosen mode shown in the header badge.
 
 **How it works:**
-1. **Ping phase** — All 44 models are pinged in parallel
+1. **Ping phase** — All enabled models are pinged in parallel (up to 53 across 3 providers)
 2. **Continuous monitoring** — Models are re-pinged every 2 seconds forever
 3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to act
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode or OpenClaw
 
-Setup wizard:
+Setup wizard (first run — walks through all 3 providers):
 
 ```
-  🔑 Setup your NVIDIA API key
-  📝 Get a free key at: https://build.nvidia.com
-  💾 Key will be saved to ~/.free-coding-models
+  🔑 First-time setup — API keys
+  Enter keys for any provider you want to use. Press Enter to skip one.
 
-  Enter your API key: nvapi-xxxx-xxxx
+  ● NVIDIA NIM
+    Free key at: https://build.nvidia.com
+    Profile → API Keys → Generate
+  Enter key (or Enter to skip): nvapi-xxxx
 
-  ✅ API key saved to ~/.free-coding-models
+  ● Groq
+    Free key at: https://console.groq.com/keys
+    API Keys → Create API Key
+  Enter key (or Enter to skip): gsk_xxxx
+
+  ● Cerebras
+    Free key at: https://cloud.cerebras.ai
+    API Keys → Create
+  Enter key (or Enter to skip):
+
+  ✅ 2 key(s) saved to ~/.free-coding-models.json
+  You can add or change keys anytime with the P key in the TUI.
 ```
 
-### Other ways to provide the key
+You don't need all three — skip any provider by pressing Enter. At least one key is required.
+
+### Adding or changing keys later
+
+Press **`P`** to open the Settings screen at any time:
+
+```
+  ⚙  Settings
+
+  Providers
+
+  ❯ [ ✅ ] NIM         nvapi-••••••••••••3f9a  [Test ✅]
+    [ ✅ ] Groq        (no key set)            [Test —]
+    [ ✅ ] Cerebras    (no key set)            [Test —]
+
+  ↑↓ Navigate  •  Enter Edit key  •  Space Toggle enabled  •  T Test key  •  Esc Close
+```
+
+- **↑↓** — navigate providers
+- **Enter** — enter inline key edit mode (type your key, Enter to save, Esc to cancel)
+- **Space** — toggle provider enabled/disabled
+- **T** — fire a real test ping to verify the key works (shows ✅/❌)
+- **Esc** — close settings and reload models list
+
+Keys are saved to `~/.free-coding-models.json` (permissions `0600`).
+
+### Environment variable overrides
+
+Env vars always take priority over the config file:
 
 ```bash
-# Pass directly
-free-coding-models nvapi-xxxx-your-key-here
-
-# Use environment variable
 NVIDIA_API_KEY=nvapi-xxx free-coding-models
-
-# Or add to your shell profile
-export NVIDIA_API_KEY=nvapi-xxxx-your-key-here
-free-coding-models
+GROQ_API_KEY=gsk_xxx free-coding-models
+CEREBRAS_API_KEY=csk_xxx free-coding-models
 ```
 
-### Get your free API key
+### Get your free API keys
 
-1. **Create NVIDIA Account** — Sign up at [build.nvidia.com](https://build.nvidia.com) with your email
-2. **Verify** — Confirm email, set privacy options, create NGC account, verify phone
-3. **Generate Key** — Go to Profile → API Keys → Generate API Key
-4. **Name it** — e.g., "free-coding-models" or "OpenCode-NIM"
-5. **Set expiration** — Choose "Never" for convenience
-6. **Copy securely** — Key is shown only once!
+**NVIDIA NIM** (44 models, S+ → C tier):
+1. Sign up at [build.nvidia.com](https://build.nvidia.com)
+2. Go to Profile → API Keys → Generate API Key
+3. Name it (e.g. "free-coding-models"), set expiry to "Never"
+4. Copy — shown only once!
 
-> 💡 **Free credits** — NVIDIA offers free credits for NIM models via their API Catalog for developers.
+**Groq** (6 models, fast inference):
+1. Sign up at [console.groq.com](https://console.groq.com)
+2. Go to API Keys → Create API Key
+
+**Cerebras** (3 models, ultra-fast silicon):
+1. Sign up at [cloud.cerebras.ai](https://cloud.cerebras.ai)
+2. Go to API Keys → Create
+
+> 💡 **Free credits** — All three providers offer free tiers for developers.
 
 ---
 
 ## 🤖 Coding Models
 
-**44 coding models** across 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**53 coding models** across 3 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+
+### NVIDIA NIM (44 models)
 
 | Tier | SWE-bench | Models |
 |------|-----------|--------|
@@ -211,6 +259,23 @@ free-coding-models
 | **B+** 30–35% | Ministral 14B (34.0%), Mixtral 8x22B (32.0%), Granite 34B Code (30.0%) |
 | **B** 20–30% | R1 Distill 8B (28.2%), R1 Distill 7B (22.6%) |
 | **C** <20% | Gemma 2 9B (18.0%), Phi 4 Mini (14.0%), Phi 3.5 Mini (12.0%) |
+
+### Groq (6 models)
+
+| Tier | SWE-bench | Model |
+|------|-----------|-------|
+| **S** 60–70% | Kimi K2 Instruct (65.8%), Llama 4 Maverick (62.0%) |
+| **A+** 50–60% | QwQ 32B (50.0%) |
+| **A** 40–50% | Llama 4 Scout (44.0%), R1 Distill 70B (43.9%) |
+| **A-** 35–40% | Llama 3.3 70B (39.5%) |
+
+### Cerebras (3 models)
+
+| Tier | SWE-bench | Model |
+|------|-----------|-------|
+| **A+** 50–60% | Qwen3 32B (50.0%) |
+| **A** 40–50% | Llama 4 Scout (44.0%) |
+| **A-** 35–40% | Llama 3.3 70B (39.5%) |
 
 ### Tier scale
 
@@ -421,10 +486,30 @@ This script:
 
 ## 📋 API Reference
 
-| Parameter | Description |
-|-----------|-------------|
-| `NVIDIA_API_KEY` | Environment variable for API key |
-| `<api-key>` | First positional argument |
+**Environment variables (override config file):**
+
+| Variable | Provider |
+|----------|----------|
+| `NVIDIA_API_KEY` | NVIDIA NIM |
+| `GROQ_API_KEY` | Groq |
+| `CEREBRAS_API_KEY` | Cerebras |
+
+**Config file:** `~/.free-coding-models.json` (created automatically, permissions `0600`)
+
+```json
+{
+  "apiKeys": {
+    "nvidia":   "nvapi-xxx",
+    "groq":     "gsk_xxx",
+    "cerebras": "csk_xxx"
+  },
+  "providers": {
+    "nvidia":   { "enabled": true },
+    "groq":     { "enabled": true },
+    "cerebras": { "enabled": true }
+  }
+}
+```
 
 **Configuration:**
 - **Ping timeout**: 15 seconds per attempt (slow models get more time)
@@ -446,15 +531,23 @@ This script:
 | `--tier B` | Show only B+, B tier models |
 | `--tier C` | Show only C tier models |
 
-**Keyboard shortcuts:**
+**Keyboard shortcuts (main TUI):**
 - **↑↓** — Navigate models
 - **Enter** — Select model (launches OpenCode or sets OpenClaw default, depending on mode)
-- **R/T/O/M/P/A/S/V/U** — Sort by Rank/Tier/Origin/Model/Ping/Avg/Status/Verdict/Uptime
+- **R/Y/O/M/L/A/S/N/H/V/U** — Sort by Rank/Tier/Origin/Model/LatestPing/Avg/SWE/Ctx/Health/Verdict/Uptime
+- **T** — Cycle tier filter (All → S+ → S → A+ → A → A- → B+ → B → C → All)
+- **Z** — Cycle mode (OpenCode CLI → OpenCode Desktop → OpenClaw)
+- **P** — Open Settings (manage API keys, enable/disable providers)
 - **W** — Decrease ping interval (faster pings)
 - **X** — Increase ping interval (slower pings)
-- **E** — Elevate tier filter (show fewer, higher-tier models)
-- **D** — Descend tier filter (show more, lower-tier models)
 - **Ctrl+C** — Exit
+
+**Keyboard shortcuts (Settings screen — `P` key):**
+- **↑↓** — Navigate providers
+- **Enter** — Edit API key inline (type key, Enter to save, Esc to cancel)
+- **Space** — Toggle provider enabled/disabled
+- **T** — Test current provider's API key (fires a live ping)
+- **Esc** — Close settings and return to main TUI
 
 ---
 

@@ -10,7 +10,7 @@
  *   During benchmarking, users can navigate with arrow keys and press Enter to act on the selected model.
  *
  *   🎯 Key features:
- *   - Parallel pings across all models with animated real-time updates
+ *   - Parallel pings across all models with animated real-time updates (3 providers: NIM, Groq, Cerebras)
  *   - Continuous monitoring with 2-second ping intervals (never stops)
  *   - Rolling averages calculated from ALL successful pings since start
  *   - Best-per-tier highlighting with medals (🥇🥈🥉)
@@ -18,15 +18,16 @@
  *   - Instant OpenCode OR OpenClaw action on Enter key press
  *   - Startup mode menu (OpenCode CLI vs OpenCode Desktop vs OpenClaw) when no flag is given
  *   - Automatic config detection and model setup for both tools
- *   - Persistent API key storage in ~/.free-coding-models
- *   - Multi-source support via sources.js (easily add new providers)
+ *   - JSON config stored in ~/.free-coding-models.json (auto-migrates from old plain-text)
+ *   - Multi-provider support via sources.js (NIM, Groq, Cerebras — extensible)
+ *   - Settings screen (P key) to manage API keys per provider, enable/disable, test keys
  *   - Uptime percentage tracking (successful pings / total pings)
- *   - Sortable columns (R/T/O/M/P/A/S/V/U keys)
- *   - Tier filtering via --tier S/A/B/C flags
+ *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/U keys)
+ *   - Tier filtering via T key (cycles S+→S→A+→A→A-→B+→B→C→All)
  *
  *   → Functions:
- *   - `loadApiKey` / `saveApiKey`: Manage persisted API key in ~/.free-coding-models
- *   - `promptApiKey`: Interactive wizard for first-time API key setup
+ *   - `loadConfig` / `saveConfig` / `getApiKey`: Multi-provider JSON config via lib/config.js
+ *   - `promptApiKey`: Interactive wizard for first-time NVIDIA API key setup
  *   - `promptModeSelection`: Startup menu to choose OpenCode vs OpenClaw
  *   - `ping`: Perform HTTP request to NIM endpoint with timeout handling
  *   - `renderTable`: Generate ASCII table with colored latency indicators and status emojis
@@ -49,8 +50,10 @@
  *   - sources.js: Model definitions from all providers
  *
  *   ⚙️ Configuration:
- *   - API key stored in ~/.free-coding-models
- *   - Models loaded from sources.js (extensible for new providers)
+ *   - API keys stored per-provider in ~/.free-coding-models.json (0600 perms)
+ *   - Old ~/.free-coding-models plain-text auto-migrated as nvidia key on first run
+ *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY
+ *   - Models loaded from sources.js — 53 models across NIM, Groq, Cerebras
  *   - OpenCode config: ~/.config/opencode/opencode.json
  *   - OpenClaw config: ~/.openclaw/openclaw.json
  *   - Ping timeout: 15s per attempt
@@ -76,9 +79,10 @@ import { createRequire } from 'module'
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
-import { MODELS } from '../sources.js'
+import { MODELS, sources } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
 import { getAvg, getVerdict, getUptime, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
+import { loadConfig, saveConfig, getApiKey, isProviderEnabled } from '../lib/config.js'
 
 const require = createRequire(import.meta.url)
 const readline = require('readline')
@@ -154,50 +158,82 @@ function runUpdate(latestVersion) {
   process.exit(1)
 }
 
-// ─── Config path ──────────────────────────────────────────────────────────────
-const CONFIG_PATH = join(homedir(), '.free-coding-models')
-
-function loadApiKey() {
-  try {
-    if (existsSync(CONFIG_PATH)) {
-      return readFileSync(CONFIG_PATH, 'utf8').trim()
-    }
-  } catch {}
-  return null
-}
-
-function saveApiKey(key) {
-  try {
-    writeFileSync(CONFIG_PATH, key, { mode: 0o600 })
-  } catch {}
-}
+// 📖 Config is now managed via lib/config.js (JSON format ~/.free-coding-models.json)
+// 📖 loadConfig/saveConfig/getApiKey are imported above
 
 // ─── First-run wizard ─────────────────────────────────────────────────────────
-async function promptApiKey() {
+// 📖 Shown when NO provider has a key configured yet.
+// 📖 Steps through all 3 providers sequentially — each is optional (Enter to skip).
+// 📖 At least one key must be entered to proceed. Keys saved to ~/.free-coding-models.json.
+// 📖 Returns the nvidia key (or null) for backward-compat with the rest of main().
+async function promptApiKey(config) {
   console.log()
-  console.log(chalk.dim('  🔑 Setup your NVIDIA API key'))
-  console.log(chalk.dim('  📝 Get a free key at: ') + chalk.cyanBright('https://build.nvidia.com'))
-  console.log(chalk.dim('  💾 Key will be saved to ~/.free-coding-models'))
+  console.log(chalk.bold('  🔑 First-time setup — API keys'))
+  console.log(chalk.dim('  Enter keys for any provider you want to use. Press Enter to skip one.'))
   console.log()
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  // 📖 Provider definitions: label, key field, url for getting the key
+  const providers = [
+    {
+      key: 'nvidia',
+      label: 'NVIDIA NIM',
+      color: chalk.rgb(118, 185, 0),
+      url: 'https://build.nvidia.com',
+      hint: 'Profile → API Keys → Generate',
+      prefix: 'nvapi-',
+    },
+    {
+      key: 'groq',
+      label: 'Groq',
+      color: chalk.rgb(249, 103, 20),
+      url: 'https://console.groq.com/keys',
+      hint: 'API Keys → Create API Key',
+      prefix: 'gsk_',
+    },
+    {
+      key: 'cerebras',
+      label: 'Cerebras',
+      color: chalk.rgb(0, 180, 255),
+      url: 'https://cloud.cerebras.ai',
+      hint: 'API Keys → Create',
+      prefix: 'csk_ / cauth_',
+    },
+  ]
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+
+  // 📖 Ask a single question — returns trimmed string or '' for skip
+  const ask = (question) => new Promise((resolve) => {
+    rl.question(question, (answer) => resolve(answer.trim()))
   })
 
-  return new Promise((resolve) => {
-    rl.question(chalk.bold('  Enter your API key: '), (answer) => {
-      rl.close()
-      const key = answer.trim()
-      if (key) {
-        saveApiKey(key)
-        console.log()
-        console.log(chalk.green('  ✅ API key saved to ~/.free-coding-models'))
-        console.log()
-      }
-      resolve(key || null)
-    })
-  })
+  for (const p of providers) {
+    console.log(`  ${p.color('●')} ${chalk.bold(p.label)}`)
+    console.log(chalk.dim(`    Free key at: `) + chalk.cyanBright(p.url))
+    console.log(chalk.dim(`    ${p.hint}`))
+    const answer = await ask(chalk.dim(`  Enter key (or Enter to skip): `))
+    console.log()
+    if (answer) {
+      config.apiKeys[p.key] = answer
+    }
+  }
+
+  rl.close()
+
+  // 📖 Check at least one key was entered
+  const anyKey = Object.values(config.apiKeys).some(v => v)
+  if (!anyKey) {
+    return null
+  }
+
+  saveConfig(config)
+  const savedCount = Object.values(config.apiKeys).filter(v => v).length
+  console.log(chalk.green(`  ✅ ${savedCount} key(s) saved to ~/.free-coding-models.json`))
+  console.log(chalk.dim('  You can add or change keys anytime with the ') + chalk.yellow('P') + chalk.dim(' key in the TUI.'))
+  console.log()
+
+  // 📖 Return nvidia key for backward-compat (main() checks it exists before continuing)
+  return config.apiKeys.nvidia || Object.values(config.apiKeys).find(v => v) || null
 }
 
 // ─── Update notification menu ──────────────────────────────────────────────
@@ -310,7 +346,6 @@ const ALT_HOME   = '\x1b[H'
 // 📖 Models are now loaded from sources.js to support multiple providers
 // 📖 This allows easy addition of new model sources beyond NVIDIA NIM
 
-const NIM_URL      = 'https://integrate.api.nvidia.com/v1/chat/completions'
 const PING_TIMEOUT  = 15_000   // 📖 15s per attempt before abort - slow models get more time
 const PING_INTERVAL = 2_000    // 📖 Ping all models every 2 seconds in continuous mode
 
@@ -519,7 +554,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Left-aligned columns - pad plain text first, then colorize
     const num = chalk.dim(String(r.idx).padEnd(W_RANK))
     const tier = tierFn(r.tier.padEnd(W_TIER))
-    const source = chalk.green('NIM'.padEnd(W_SOURCE))
+    // 📖 Show provider name from sources map (NIM / Groq / Cerebras)
+    const providerName = sources[r.providerKey]?.name ?? r.providerKey ?? 'NIM'
+    const source = chalk.green(providerName.padEnd(W_SOURCE))
     const name = r.label.slice(0, W_MODEL).padEnd(W_MODEL)
     const sweScore = r.sweScore ?? '—'
     const sweCell = sweScore !== '—' && parseFloat(sweScore) >= 50 
@@ -663,7 +700,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Filter tier  •  Z Mode  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Filter tier  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(chalk.dim('  Made with ') + '💖 & ☕' + chalk.dim(' by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '🫂 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/WKA3TwYVuZ\x1b\\Join our Discord!\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Read the docs on GitHub\x1b]8;;\x1b\\')
   lines.push('')
@@ -679,12 +716,14 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 
 // ─── HTTP ping ────────────────────────────────────────────────────────────────
 
-async function ping(apiKey, modelId) {
+// 📖 ping: Send a single chat completion request to measure model availability and latency.
+// 📖 url param is the provider's endpoint URL — differs per provider (NIM, Groq, Cerebras).
+async function ping(apiKey, modelId, url) {
   const ctrl  = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT)
   const t0    = performance.now()
   try {
-    const resp = await fetch(NIM_URL, {
+    const resp = await fetch(url, {
       method: 'POST', signal: ctrl.signal,
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
@@ -1101,32 +1140,41 @@ async function startOpenClaw(model, apiKey) {
 // 📖 findBestModel is imported from lib/utils.js
 
 // ─── Function to run in fiable mode (10-second analysis then output best model) ──
-async function runFiableMode(apiKey) {
+async function runFiableMode(config) {
   console.log(chalk.cyan('  ⚡ Analyzing models for reliability (10 seconds)...'))
   console.log()
 
-  let results = MODELS.map(([modelId, label, tier, sweScore, ctx], i) => ({
-    idx: i + 1, modelId, label, tier, sweScore, ctx,
-    status: 'pending',
-    pings: [],
-    httpCode: null,
-  }))
+  // 📖 Only include models from enabled providers that have API keys
+  let results = MODELS
+    .filter(([,,,,,providerKey]) => {
+      return isProviderEnabled(config, providerKey) && getApiKey(config, providerKey)
+    })
+    .map(([modelId, label, tier, sweScore, ctx, providerKey], i) => ({
+      idx: i + 1, modelId, label, tier, sweScore, ctx, providerKey,
+      status: 'pending',
+      pings: [],
+      httpCode: null,
+    }))
 
   const startTime = Date.now()
   const analysisDuration = 10000 // 10 seconds
 
-  // 📖 Run initial pings
-  const pingPromises = results.map(r => ping(apiKey, r.modelId).then(({ code, ms }) => {
-    r.pings.push({ ms, code })
-    if (code === '200') {
-      r.status = 'up'
-    } else if (code === '000') {
-      r.status = 'timeout'
-    } else {
-      r.status = 'down'
-      r.httpCode = code
-    }
-  }))
+  // 📖 Run initial pings using per-provider API key and URL
+  const pingPromises = results.map(r => {
+    const rApiKey = getApiKey(config, r.providerKey)
+    const url = sources[r.providerKey]?.url
+    return ping(rApiKey, r.modelId, url).then(({ code, ms }) => {
+      r.pings.push({ ms, code })
+      if (code === '200') {
+        r.status = 'up'
+      } else if (code === '000') {
+        r.status = 'timeout'
+      } else {
+        r.status = 'down'
+        r.httpCode = code
+      }
+    })
+  })
 
   await Promise.allSettled(pingPromises)
 
@@ -1144,10 +1192,10 @@ async function runFiableMode(apiKey) {
     process.exit(1)
   }
 
-  // 📖 Output in format: provider/name
-  const provider = 'nvidia' // Always NVIDIA NIM for now
+  // 📖 Output in format: providerName/modelId
+  const providerName = sources[best.providerKey]?.name ?? best.providerKey ?? 'nvidia'
   console.log(chalk.green(`  ✓ Most reliable model:`))
-  console.log(chalk.bold(`    ${provider}/${best.modelId}`))
+  console.log(chalk.bold(`    ${providerName}/${best.modelId}`))
   console.log()
   console.log(chalk.dim(`  📊 Stats:`))
   console.log(chalk.dim(`    Avg ping: ${getAvg(best)}ms`))
@@ -1169,19 +1217,25 @@ function filterByTierOrExit(results, tierLetter) {
 }
 
 async function main() {
-  // 📖 Simple CLI without flags - just API key handling
-  let apiKey = process.env.NVIDIA_API_KEY || loadApiKey()
+  // 📖 Load JSON config (auto-migrates old plain-text ~/.free-coding-models if needed)
+  const config = loadConfig()
 
-  if (!apiKey) {
-    apiKey = await promptApiKey()
-    if (!apiKey) {
+  // 📖 Check if any provider has a key — if not, run the first-time setup wizard
+  const hasAnyKey = Object.keys(sources).some(pk => !!getApiKey(config, pk))
+
+  if (!hasAnyKey) {
+    const result = await promptApiKey(config)
+    if (!result) {
       console.log()
       console.log(chalk.red('  ✖ No API key provided.'))
-      console.log(chalk.dim('  Run `free-coding-models` again or set NVIDIA_API_KEY env var.'))
+      console.log(chalk.dim('  Run `free-coding-models` again or set NVIDIA_API_KEY / GROQ_API_KEY / CEREBRAS_API_KEY.'))
       console.log()
       process.exit(1)
     }
   }
+
+  // 📖 Backward-compat: keep apiKey var for startOpenClaw() which still needs it
+  let apiKey = getApiKey(config, 'nvidia')
 
   // 📖 Check for updates in the background
   let latestVersion = null
@@ -1221,16 +1275,17 @@ async function main() {
     // If action is null (Continue without update) or changelogs, proceed to main app
   }
 
-  // 📖 Create results array with all models initially visible
-  let results = MODELS.map(([modelId, label, tier, sweScore, ctx], i) => ({
-    idx: i + 1, modelId, label, tier, sweScore, ctx,
-    status: 'pending',
-    pings: [],  // 📖 All ping results (ms or 'TIMEOUT')
-    httpCode: null,
-    hidden: false,  // 📖 Simple flag to hide/show models
-  }))
-
-  // 📖 No initial filters - all models visible by default
+  // 📖 Build results from MODELS — only include enabled providers
+  // 📖 Each result gets providerKey so ping() knows which URL + API key to use
+  let results = MODELS
+    .filter(([,,,,,providerKey]) => isProviderEnabled(config, providerKey))
+    .map(([modelId, label, tier, sweScore, ctx, providerKey], i) => ({
+      idx: i + 1, modelId, label, tier, sweScore, ctx, providerKey,
+      status: 'pending',
+      pings: [],  // 📖 All ping results (ms or 'TIMEOUT')
+      httpCode: null,
+      hidden: false,  // 📖 Simple flag to hide/show models
+    }))
 
   // 📖 Clamp scrollOffset so cursor is always within the visible viewport window.
   // 📖 Called after every cursor move, sort change, and terminal resize.
@@ -1275,6 +1330,13 @@ async function main() {
     mode,                         // 📖 'opencode' or 'openclaw' — controls Enter action
     scrollOffset: 0,              // 📖 First visible model index in viewport
     terminalRows: process.stdout.rows || 24,  // 📖 Current terminal height
+    // 📖 Settings screen state (P key opens it)
+    settingsOpen: false,          // 📖 Whether settings overlay is active
+    settingsCursor: 0,            // 📖 Which provider row is selected in settings
+    settingsEditMode: false,      // 📖 Whether we're in inline key editing mode
+    settingsEditBuffer: '',       // 📖 Typed characters for the API key being edited
+    settingsTestResults: {},      // 📖 { providerKey: 'pending'|'ok'|'fail'|null }
+    config,                       // 📖 Live reference to the config object (updated on save)
   }
 
   // 📖 Re-clamp viewport on terminal resize
@@ -1308,6 +1370,88 @@ async function main() {
     return state.results
   }
 
+  // ─── Settings screen renderer ─────────────────────────────────────────────
+  // 📖 renderSettings: Draw the settings overlay in the alt screen buffer.
+  // 📖 Shows all providers with their API key (masked) + enabled state.
+  // 📖 When in edit mode (settingsEditMode=true), shows an inline input field.
+  // 📖 Key "T" in settings = test API key for selected provider.
+  function renderSettings() {
+    const providerKeys = Object.keys(sources)
+    const EL = '\x1b[K'
+    const lines = []
+
+    lines.push('')
+    lines.push(`  ${chalk.bold('⚙  Settings')}  ${chalk.dim('— free-coding-models v' + LOCAL_VERSION)}`)
+    lines.push('')
+    lines.push(`  ${chalk.bold('Providers')}`)
+    lines.push('')
+
+    for (let i = 0; i < providerKeys.length; i++) {
+      const pk = providerKeys[i]
+      const src = sources[pk]
+      const isCursor = i === state.settingsCursor
+      const enabled = isProviderEnabled(state.config, pk)
+      const keyVal = state.config.apiKeys?.[pk] ?? ''
+
+      // 📖 Build API key display — mask most chars, show last 4
+      let keyDisplay
+      if (state.settingsEditMode && isCursor) {
+        // 📖 Inline editing: show typed buffer with cursor indicator
+        keyDisplay = chalk.cyanBright(`${state.settingsEditBuffer || ''}▏`)
+      } else if (keyVal) {
+        const visible = keyVal.slice(-4)
+        const masked = '•'.repeat(Math.min(16, Math.max(4, keyVal.length - 4)))
+        keyDisplay = chalk.dim(masked + visible)
+      } else {
+        keyDisplay = chalk.dim('(no key set)')
+      }
+
+      // 📖 Test result badge
+      const testResult = state.settingsTestResults[pk]
+      let testBadge = chalk.dim('[Test —]')
+      if (testResult === 'pending') testBadge = chalk.yellow('[Testing…]')
+      else if (testResult === 'ok')   testBadge = chalk.greenBright('[Test ✅]')
+      else if (testResult === 'fail') testBadge = chalk.red('[Test ❌]')
+
+      const enabledBadge = enabled ? chalk.greenBright('✅') : chalk.dim('⬜')
+      const providerName = chalk.bold(src.name.padEnd(10))
+      const bullet = isCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
+
+      const row = `${bullet}[ ${enabledBadge} ] ${providerName}  ${keyDisplay.padEnd(30)}  ${testBadge}`
+      lines.push(isCursor ? chalk.bgRgb(30, 30, 60)(row) : row)
+    }
+
+    lines.push('')
+    if (state.settingsEditMode) {
+      lines.push(chalk.dim('  Type API key  •  Enter Save  •  Esc Cancel'))
+    } else {
+      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key  •  Space Toggle enabled  •  T Test key  •  Esc Close'))
+    }
+    lines.push('')
+
+    const cleared = lines.map(l => l + EL)
+    const remaining = state.terminalRows > 0 ? Math.max(0, state.terminalRows - cleared.length) : 0
+    for (let i = 0; i < remaining; i++) cleared.push(EL)
+    return cleared.join('\n')
+  }
+
+  // ─── Settings key test helper ───────────────────────────────────────────────
+  // 📖 Fires a single ping to the selected provider to verify the API key works.
+  async function testProviderKey(providerKey) {
+    const src = sources[providerKey]
+    if (!src) return
+    const testKey = getApiKey(state.config, providerKey)
+    if (!testKey) { state.settingsTestResults[providerKey] = 'fail'; return }
+
+    // 📖 Use the first model in the provider's list for the test ping
+    const testModel = src.models[0]?.[0]
+    if (!testModel) { state.settingsTestResults[providerKey] = 'fail'; return }
+
+    state.settingsTestResults[providerKey] = 'pending'
+    const { code } = await ping(testKey, testModel, src.url)
+    state.settingsTestResults[providerKey] = code === '200' ? 'ok' : 'fail'
+  }
+
   // 📖 Setup keyboard input for interactive selection during pings
   // 📖 Use readline with keypress event for arrow key handling
   process.stdin.setEncoding('utf8')
@@ -1317,6 +1461,103 @@ async function main() {
 
   const onKeyPress = async (str, key) => {
     if (!key) return
+
+    // ─── Settings overlay keyboard handling ───────────────────────────────────
+    if (state.settingsOpen) {
+      const providerKeys = Object.keys(sources)
+
+      // 📖 Edit mode: capture typed characters for the API key
+      if (state.settingsEditMode) {
+        if (key.name === 'return') {
+          // 📖 Save the new key and exit edit mode
+          const pk = providerKeys[state.settingsCursor]
+          const newKey = state.settingsEditBuffer.trim()
+          if (newKey) {
+            state.config.apiKeys[pk] = newKey
+            saveConfig(state.config)
+          }
+          state.settingsEditMode = false
+          state.settingsEditBuffer = ''
+        } else if (key.name === 'escape') {
+          // 📖 Cancel without saving
+          state.settingsEditMode = false
+          state.settingsEditBuffer = ''
+        } else if (key.name === 'backspace') {
+          state.settingsEditBuffer = state.settingsEditBuffer.slice(0, -1)
+        } else if (str && !key.ctrl && !key.meta && str.length === 1) {
+          // 📖 Append printable character to buffer
+          state.settingsEditBuffer += str
+        }
+        return
+      }
+
+      // 📖 Normal settings navigation
+      if (key.name === 'escape') {
+        // 📖 Close settings — rebuild results to reflect provider changes
+        state.settingsOpen = false
+        // 📖 Rebuild results: add models from newly enabled providers, remove disabled
+        results = MODELS
+          .filter(([,,,,,pk]) => isProviderEnabled(state.config, pk))
+          .map(([modelId, label, tier, sweScore, ctx, providerKey], i) => {
+            // 📖 Try to reuse existing result to keep ping history
+            const existing = state.results.find(r => r.modelId === modelId && r.providerKey === providerKey)
+            if (existing) return existing
+            return { idx: i + 1, modelId, label, tier, sweScore, ctx, providerKey, status: 'pending', pings: [], httpCode: null, hidden: false }
+          })
+        // 📖 Re-index results
+        results.forEach((r, i) => { r.idx = i + 1 })
+        state.results = results
+        adjustScrollOffset(state)
+        return
+      }
+
+      if (key.name === 'up' && state.settingsCursor > 0) {
+        state.settingsCursor--
+        return
+      }
+
+      if (key.name === 'down' && state.settingsCursor < providerKeys.length - 1) {
+        state.settingsCursor++
+        return
+      }
+
+      if (key.name === 'return') {
+        // 📖 Enter edit mode for the selected provider's key
+        const pk = providerKeys[state.settingsCursor]
+        state.settingsEditBuffer = state.config.apiKeys?.[pk] ?? ''
+        state.settingsEditMode = true
+        return
+      }
+
+      if (key.name === 'space') {
+        // 📖 Toggle enabled/disabled for selected provider
+        const pk = providerKeys[state.settingsCursor]
+        if (!state.config.providers) state.config.providers = {}
+        if (!state.config.providers[pk]) state.config.providers[pk] = { enabled: true }
+        state.config.providers[pk].enabled = !isProviderEnabled(state.config, pk)
+        saveConfig(state.config)
+        return
+      }
+
+      if (key.name === 't') {
+        // 📖 Test the selected provider's key (fires a real ping)
+        const pk = providerKeys[state.settingsCursor]
+        testProviderKey(pk)
+        return
+      }
+
+      if (key.ctrl && key.name === 'c') { exit(0); return }
+      return // 📖 Swallow all other keys while settings is open
+    }
+
+    // 📖 P key: open settings screen
+    if (key.name === 'p') {
+      state.settingsOpen = true
+      state.settingsCursor = 0
+      state.settingsEditMode = false
+      state.settingsEditBuffer = ''
+      return
+    }
 
     // 📖 Sorting keys: R=rank, Y=tier, O=origin, M=model, L=latest ping, A=avg ping, S=SWE-bench, N=context, H=health, V=verdict, U=uptime
     // 📖 T is reserved for tier filter cycling — tier sort moved to Y
@@ -1435,10 +1676,13 @@ async function main() {
 
   process.stdin.on('keypress', onKeyPress)
 
-  // 📖 Animation loop: clear alt screen + redraw table at FPS with cursor
+  // 📖 Animation loop: render settings overlay OR main table based on state
   const ticker = setInterval(() => {
     state.frame++
-    process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows))
+    const content = state.settingsOpen
+      ? renderSettings()
+      : renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows)
+    process.stdout.write(ALT_HOME + content)
   }, Math.round(1000 / FPS))
 
   process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows))
@@ -1446,8 +1690,11 @@ async function main() {
   // ── Continuous ping loop — ping all models every N seconds forever ──────────
 
   // 📖 Single ping function that updates result
+  // 📖 Uses per-provider API key and URL from sources.js
   const pingModel = async (r) => {
-    const { code, ms } = await ping(apiKey, r.modelId)
+    const providerApiKey = getApiKey(state.config, r.providerKey) ?? apiKey
+    const providerUrl = sources[r.providerKey]?.url ?? sources.nvidia.url
+    const { code, ms } = await ping(providerApiKey, r.modelId, providerUrl)
 
     // 📖 Store ping result as object with ms and code
     // 📖 ms = actual response time (even for errors like 429)
