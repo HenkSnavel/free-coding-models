@@ -313,6 +313,9 @@ Or run without flags and choose **OpenClaw** from the startup menu.
     "defaults": {
       "model": {
         "primary": "nvidia/deepseek-ai/deepseek-v3.2"
+      },
+      "models": {
+        "nvidia/deepseek-ai/deepseek-v3.2": {}
       }
     }
   }
@@ -320,6 +323,8 @@ Or run without flags and choose **OpenClaw** from the startup menu.
 ```
 
 > ⚠️ **Note:** `providers` must be nested under `models.providers` — not at the config root. A root-level `providers` key is ignored by OpenClaw.
+
+> ⚠️ **Note:** The model must also be listed in `agents.defaults.models` (the allowlist). Without this entry, OpenClaw rejects the model with *"not allowed"* even if it is set as primary.
 
 ### After updating OpenClaw config
 

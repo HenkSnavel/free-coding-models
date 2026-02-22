@@ -783,10 +783,18 @@ async function startOpenClaw(model, apiKey) {
 
   // 📖 Set as the default primary model for all agents.
   // 📖 Format: "provider/model-id" — e.g. "nvidia/deepseek-ai/deepseek-v3.2"
+  // 📖 Set as the default primary model for all agents.
+  // 📖 Format: "provider/model-id" — e.g. "nvidia/deepseek-ai/deepseek-v3.2"
   if (!config.agents) config.agents = {}
   if (!config.agents.defaults) config.agents.defaults = {}
   if (!config.agents.defaults.model) config.agents.defaults.model = {}
   config.agents.defaults.model.primary = `nvidia/${model.modelId}`
+
+  // 📖 REQUIRED: OpenClaw requires the model to be explicitly listed in agents.defaults.models
+  // 📖 (the allowlist). Without this entry, OpenClaw rejects the model with "not allowed".
+  // 📖 See: https://docs.openclaw.ai/gateway/configuration-reference
+  if (!config.agents.defaults.models) config.agents.defaults.models = {}
+  config.agents.defaults.models[`nvidia/${model.modelId}`] = {}
 
   saveOpenClawConfig(config)
 
