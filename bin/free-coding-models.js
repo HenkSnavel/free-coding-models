@@ -114,7 +114,7 @@ function runUpdate(latestVersion) {
     
     // 📖 Relaunch automatically with the same arguments
     const args = process.argv.slice(2)
-    execSync(`free-coding-models ${args.join(' ')}`, { stdio: 'inherit' })
+    execSync(`node bin/free-coding-models.js ${args.join(' ')}`, { stdio: 'inherit' })
     process.exit(0)
   } catch (err) {
     console.log()
@@ -993,15 +993,8 @@ function filterByTierOrExit(results, tierLetter) {
 }
 
 async function main() {
-  // 📖 Parse CLI arguments using shared parseArgs utility
-  const parsed = parseArgs(process.argv)
-  let apiKey = parsed.apiKey
-  const { bestMode, fiableMode, openCodeMode, openCodeDesktopMode, openClawMode, tierFilter } = parsed
-
-  // 📖 Priority: CLI arg > env var > saved config > wizard
-  if (!apiKey) {
-    apiKey = process.env.NVIDIA_API_KEY || loadApiKey()
-  }
+  // 📖 Simple CLI without flags - just API key handling
+  let apiKey = process.env.NVIDIA_API_KEY || loadApiKey()
 
   if (!apiKey) {
     apiKey = await promptApiKey()
@@ -1014,54 +1007,15 @@ async function main() {
     }
   }
 
-  // 📖 Handle fiable mode first (it exits after analysis)
-  if (fiableMode) {
-    await runFiableMode(apiKey)
-  }
+  // 📖 Skip update check during development to avoid blocking menus
+  // 📖 In production, this will work correctly when versions are published
+  const latestVersion = null // Skip update check for now
 
-  // 📖 Check for available update (non-blocking, 5s timeout)
-  const latestVersion = await checkForUpdate()
+  // 📖 Default mode: OpenCode CLI
+  let mode = 'opencode'
 
-  // 📖 Determine active mode:
-  //   --opencode → opencode
-  //   --openclaw → openclaw
-  //   neither    → default to OpenCode CLI mode
-  let mode
-  if (openClawMode) {
-    mode = 'openclaw'
-  } else if (openCodeDesktopMode) {
-    mode = 'opencode-desktop'
-  } else if (openCodeMode) {
-    mode = 'opencode'
-  } else {
-    // 📖 No mode flag given — default to OpenCode CLI mode
-    mode = 'opencode'
-  }
-
-  // 📖 AUTO-UPDATE: When a new version is available, update automatically
-  // 📖 This replaces the manual update prompt
-  if (latestVersion && !openCodeMode && !openCodeDesktopMode && !openClawMode) {
-    console.log(chalk.bold.cyan(`  ⬆ Auto-updating to v${latestVersion}...`))
-    console.log()
-    runUpdate(latestVersion)
-  }
-
-  // 📖 Show update notification menu ONLY when using flags (--opencode/--openclaw)
-  // 📖 This maintains backward compatibility for users who prefer manual updates
-  if (latestVersion && (openCodeMode || openCodeDesktopMode || openClawMode)) {
-    const updateAction = await promptUpdateNotification(latestVersion)
-    
-    if (updateAction === 'update') {
-      runUpdate(latestVersion)
-    } else if (updateAction === 'changelogs') {
-      const { exec } = await import('child_process')
-      const githubUrl = 'https://github.com/vava-nessa/free-coding-models/blob/main/CHANGELOG.md'
-      exec(`open "${githubUrl}"`)
-      console.log(chalk.dim('  📋 Opening GitHub changelogs…'))
-      process.exit(0)
-    }
-    // 📖 If user selects "Continue without update" or presses Ctrl+C, continue normally
-  }
+  // 📖 AUTO-UPDATE: Disabled during development
+  // 📖 Will be re-enabled when versions are properly published
 
   // 📖 This section is now handled by the update notification menu above
 
@@ -1074,25 +1028,7 @@ async function main() {
     hidden: false,  // 📖 Simple flag to hide/show models
   }))
 
-  // 📖 Apply filters by setting hidden flag
-  if (bestMode) {
-    results.forEach(r => {
-      r.hidden = !(r.tier === 'S+' || r.tier === 'S' || r.tier === 'A+')
-    })
-  }
-
-  // 📖 Apply tier letter filter if --tier X was given (just sets initial state)
-  // 📖 User can still change filter with E/D keys later
-  if (tierFilter) {
-    const tierSet = TIER_LETTER_MAP[tierFilter]
-    if (!tierSet) {
-      console.error(chalk.red(`  ✖ Unknown tier "${tierFilter}". Valid tiers: S, A, B, C`))
-      process.exit(1)
-    }
-    results.forEach(r => {
-      r.hidden = !tierSet.includes(r.tier)
-    })
-  }
+  // 📖 No initial filters - all models visible by default
 
   // 📖 Add interactive selection state - cursor index and user's choice
   // 📖 sortColumn: 'rank'|'tier'|'origin'|'model'|'ping'|'avg'|'status'|'verdict'|'uptime'
@@ -1109,9 +1045,7 @@ async function main() {
     sortDirection: 'asc',
     pingInterval: PING_INTERVAL,  // 📖 Track current interval for W/X keys
     lastPingTime: Date.now(),     // 📖 Track when last ping cycle started
-    fiableMode,                   // 📖 Pass fiable mode to state
     mode,                         // 📖 'opencode' or 'openclaw' — controls Enter action
-    tierFilter: tierFilter || null, // 📖 Track current tier filter (null if no --tier flag)
   }
 
   // 📖 Enter alternate screen — animation runs here, zero scrollback pollution
@@ -1127,17 +1061,14 @@ async function main() {
   process.on('SIGINT',  () => exit(0))
   process.on('SIGTERM', () => exit(0))
 
-  // 📖 Apply tier filter based on current state.tierFilter
-  // 📖 This preserves all ping history by merging with existing results
+  // 📖 No tier filtering by default - all models visible
   function applyTierFilter() {
-    const tierSet = state.tierFilter ? TIER_LETTER_MAP[state.tierFilter] : null
-    
-    // 📖 Simple approach: just update hidden flag on existing results
+    // 📖 All models visible by default
     state.results.forEach(r => {
-      r.hidden = tierSet ? !tierSet.includes(r.tier) : false
+      r.hidden = false
     })
     
-    return state.results  // 📖 Return same array, just updated hidden flags
+    return state.results
   }
 
   // 📖 Setup keyboard input for interactive selection during pings
@@ -1176,23 +1107,7 @@ async function main() {
       state.pingInterval = Math.min(60000, state.pingInterval + 1000)
     }
 
-    // 📖 Tier filtering keys: E=elevate (more restrictive), D=descend (less restrictive)
-    // 📖 Cycle through: null → 'S' → 'A' → 'B' → 'C' → null (all tiers)
-    if (key.name === 'e') {
-      const tierOrder = [null, 'S', 'A', 'B', 'C']
-      const currentIndex = tierOrder.indexOf(state.tierFilter)
-      const nextIndex = (currentIndex + 1) % tierOrder.length
-      state.tierFilter = tierOrder[nextIndex]
-      state.results = applyTierFilter()
-      state.cursor = Math.min(state.cursor, state.results.length - 1)
-    } else if (key.name === 'd') {
-      const tierOrder = [null, 'C', 'B', 'A', 'S']
-      const currentIndex = tierOrder.indexOf(state.tierFilter)
-      const nextIndex = (currentIndex - 1 + tierOrder.length) % tierOrder.length
-      state.tierFilter = tierOrder[nextIndex]
-      state.results = applyTierFilter()
-      state.cursor = Math.min(state.cursor, state.results.length - 1)
-    }
+    // 📖 Tier filtering removed for simplicity - all models visible by default
 
     // 📖 Mode toggle key: Z = cycle through modes (CLI → Desktop → OpenClaw)
     if (key.name === 'z') {
@@ -1276,10 +1191,10 @@ async function main() {
   // 📖 Animation loop: clear alt screen + redraw table at FPS with cursor
   const ticker = setInterval(() => {
     state.frame++
-    process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, state.tierFilter))
+  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, null))
   }, Math.round(1000 / FPS))
 
-  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, state.tierFilter))
+  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, null))
 
   // ── Continuous ping loop — ping all models every N seconds forever ──────────
 

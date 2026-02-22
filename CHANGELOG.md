@@ -7,13 +7,13 @@
 ### Refactored
 - **Removed startup menu**: No more blocking mode selection menu at startup
 - **Default to OpenCode CLI**: App starts directly in CLI mode when no flags given
-- **Mode toggle in TUI**: Added M key to cycle between CLI → Desktop → OpenClaw → CLI
+- **Mode toggle in TUI**: Added Z key to cycle between CLI → Desktop → OpenClaw → CLI
 - **GitHub changelogs**: "Read Changelogs" option now opens GitHub URL instead of local file
 - **Auto-update by default**: When new version available without flags, auto-updates and relaunches
 - **Centered update menu**: Update notification appears only when needed, with clean centered layout
 
 ### Changed
-- **Header display**: Shows `[💻 CLI] (M to toggle)` with mode toggle hint
+- **Header display**: Shows `[💻 CLI] (Z to toggle)` with mode toggle hint
 - **Footer instructions**: Added "M Mode" to key bindings
 - **Update workflow**: Flags (`--opencode` etc.) still show update menu for compatibility
 
