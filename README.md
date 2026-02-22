@@ -199,23 +199,23 @@ free-coding-models
 
 ## 🤖 Coding Models
 
-**44 coding models** across 8 tiers, ranked by [Aider Polyglot benchmark](https://aider.chat/docs/leaderboards) (225 coding exercises across C++/Go/Java/JS/Python/Rust). Models without a confirmed Aider score are estimated from model family, size, and published release benchmarks.
+**44 coding models** across 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
 
-| Tier | Score | Count | Models |
-|------|-------|-------|--------|
-| **S+** | 75%+ | 7 | DeepSeek V3.1/Terminus, DeepSeek V3.2, Kimi K2.5, Devstral 2, Nemotron Ultra 253B, Mistral Large 675B |
-| **S**  | 62–74% | 7 | Qwen2.5 Coder 32B, GLM 5, Qwen3.5 400B VLM, Qwen3 Coder 480B, Qwen3 80B Thinking, Llama 3.1 405B, MiniMax M2.1 |
-| **A+** | 54–62% | 6 | Kimi K2 Thinking/Instruct, Qwen3 235B, Llama 3.3 70B, GLM 4.7, Qwen3 80B Instruct |
-| **A**  | 44–54% | 5 | MiniMax M2, Mistral Medium 3, Magistral Small, Nemotron Nano 30B, R1 Distill 32B |
-| **A-** | 36–44% | 5 | GPT OSS 120B, Nemotron Super 49B, Llama 4 Scout, R1 Distill 14B, Colosseum 355B |
-| **B+** | 25–36% | 5 | QwQ 32B, GPT OSS 20B, Stockmark 100B, Seed OSS 36B, Step 3.5 Flash |
-| **B**  | 14–25% | 5 | Llama 4 Maverick, Mixtral 8x22B, Ministral 14B, Granite 34B Code, R1 Distill 8B |
-| **C**  | <14%  | 4 | R1 Distill 7B, Gemma 2 9B, Phi 3.5 Mini, Phi 4 Mini |
+| Tier | SWE-bench | Models |
+|------|-----------|--------|
+| **S+** ≥70% | GLM 5 (77.8%), Kimi K2.5 (76.8%), Step 3.5 Flash (74.4%), MiniMax M2.1 (74.0%), GLM 4.7 (73.8%), DeepSeek V3.2 (73.1%), Devstral 2 (72.2%), Kimi K2 Thinking (71.3%), Qwen3 Coder 480B (70.6%), Qwen3 235B (70.0%) |
+| **S** 60–70% | MiniMax M2 (69.4%), DeepSeek V3.1 Terminus (68.4%), Qwen3 80B Thinking (68.0%), Qwen3.5 400B (68.0%), Kimi K2 Instruct (65.8%), Qwen3 80B Instruct (65.0%), DeepSeek V3.1 (62.0%), Llama 4 Maverick (62.0%), GPT OSS 120B (60.0%) |
+| **A+** 50–60% | Mistral Large 675B (58.0%), Nemotron Ultra 253B (56.0%), Colosseum 355B (52.0%), QwQ 32B (50.0%) |
+| **A** 40–50% | Nemotron Super 49B (49.0%), Mistral Medium 3 (48.0%), Qwen2.5 Coder 32B (46.0%), Magistral Small (45.0%), Llama 4 Scout (44.0%), Llama 3.1 405B (44.0%), Nemotron Nano 30B (43.0%), R1 Distill 32B (43.9%), GPT OSS 20B (42.0%) |
+| **A-** 35–40% | Llama 3.3 70B (39.5%), Seed OSS 36B (38.0%), R1 Distill 14B (37.7%), Stockmark 100B (36.0%) |
+| **B+** 30–35% | Ministral 14B (34.0%), Mixtral 8x22B (32.0%), Granite 34B Code (30.0%) |
+| **B** 20–30% | R1 Distill 8B (28.2%), R1 Distill 7B (22.6%) |
+| **C** <20% | Gemma 2 9B (18.0%), Phi 4 Mini (14.0%), Phi 3.5 Mini (12.0%) |
 
 ### Tier scale
 
-- **S+/S** — Frontier coders, top Aider polyglot scores, best for complex refactors
-- **A+/A** — Excellent alternatives, strong at most coding tasks
+- **S+/S** — Elite frontier coders (≥60% SWE-bench), best for complex real-world tasks and refactors
+- **A+/A** — Great alternatives, strong at most coding tasks
 - **A-/B+** — Solid performers, good for targeted programming tasks
 - **B/C** — Lightweight or older models, good for code completion on constrained infra
 
