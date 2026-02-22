@@ -143,7 +143,7 @@ jobs:
       # 📖 The embed color 0x76b900 is NVIDIA green (matches the project branding).
       # 📖 If DISCORD_WEBHOOK_URL is not set, this step is silently skipped.
       - name: Notify Discord
-        if: steps.check.outputs.skip == 'false' && secrets.DISCORD_WEBHOOK_URL != ''
+        if: steps.check.outputs.skip == 'false'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           VERSION: ${{ steps.check.outputs.version }}
@@ -155,6 +155,12 @@ jobs:
           const fs      = require('fs')
           const url     = process.env.DISCORD_WEBHOOK_URL
           const version = process.env.VERSION
+
+          // 📖 Bail early if no webhook URL is configured — skip silently
+          if (!url) {
+            console.log('⚠️ DISCORD_WEBHOOK_URL not set — skipping Discord notification')
+            process.exit(0)
+          }
           const releaseUrl = process.env.RELEASE_URL ||
             `https://github.com/vava-nessa/free-coding-models/releases/tag/v${version}`
 

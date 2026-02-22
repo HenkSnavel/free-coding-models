@@ -2,6 +2,13 @@
 
 ---
 
+## 0.1.45
+
+### Fixed
+- **Discord notification**: Fixed GitHub Actions workflow crash (secrets context not allowed in step `if` conditions — now handled in the Node script directly)
+
+---
+
 ## 0.1.44
 
 ### Added
