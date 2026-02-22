@@ -2,6 +2,21 @@
 
 ---
 
+## 0.1.24 — 2026-02-22
+
+### Fixed
+- **Viewport scrolling for TUI overflow**: Fixed Ghostty and narrow terminal issues where content would scroll past alternate screen
+- **Terminal wrapping**: Wide rows now clip at terminal edge instead of wrapping to next line
+- **Scrollback pollution**: Replaced `\x1b[2J` with `\x1b[H` + per-line `\x1b[K` to avoid Ghostty scrollback issues
+- **Viewport calculation**: Added smart scrolling with "N more above/below" indicators when models exceed screen height
+- **Scroll offset adjustment**: Cursor stays within visible window during navigation and terminal resize
+
+### Changed
+- **DECAWM off**: Disabled auto-wrap in alternate screen to prevent row height doubling
+- **Terminal resize handling**: Viewport automatically adjusts when terminal size changes
+
+---
+
 ## 0.1.23 — 2026-02-22
 
 ### Refactored
