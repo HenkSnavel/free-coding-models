@@ -327,7 +327,7 @@ const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].
 // 📖 are imported from lib/utils.js for testability
 
 // 📖 renderTable: mode param controls footer hint text (opencode vs openclaw)
-function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode') {
+function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilter = null) {
   const up      = results.filter(r => r.status === 'up').length
   const down    = results.filter(r => r.status === 'down').length
   const timeout = results.filter(r => r.status === 'timeout').length
@@ -354,6 +354,12 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     modeBadge = chalk.bold.rgb(0, 200, 255)(' [💻 CLI]')
   }
 
+  // 📖 Tier filter badge shown when filtering is active
+  let tierBadge = ''
+  if (tierFilter) {
+    tierBadge = chalk.bold.rgb(255, 200, 0)(` [Tier ${tierFilter}]`)
+  }
+
   // 📖 Column widths (generous spacing with margins)
   const W_RANK = 6
   const W_TIER = 6
@@ -370,7 +376,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 
   const lines = [
     '',
-    `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}   ` +
+    `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${tierBadge}   ` +
       chalk.greenBright(`✅ ${up}`) + chalk.dim(' up  ') +
       chalk.yellow(`⏱ ${timeout}`) + chalk.dim(' timeout  ') +
       chalk.red(`❌ ${down}`) + chalk.dim(' down  ') +
@@ -556,7 +562,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  E↑/D↓ Tier  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(chalk.dim('  made with ') + '🩷' + chalk.dim(' by vava-nessa  •  ') + chalk.dim.underline('https://github.com/vava-nessa/free-coding-models'))
   lines.push('')
@@ -1070,6 +1076,7 @@ async function main() {
   // 📖 sortColumn: 'rank'|'tier'|'origin'|'model'|'ping'|'avg'|'status'|'verdict'|'uptime'
   // 📖 sortDirection: 'asc' (default) or 'desc'
   // 📖 pingInterval: current interval in ms (default 2000, adjustable with W/X keys)
+  // 📖 tierFilter: current tier filter letter (null = all, 'S' = S+/S, 'A' = A+/A/A-, etc.)
   const state = {
     results,
     pendingPings: 0,
@@ -1082,6 +1089,7 @@ async function main() {
     lastPingTime: Date.now(),     // 📖 Track when last ping cycle started
     fiableMode,                   // 📖 Pass fiable mode to state
     mode,                         // 📖 'opencode' or 'openclaw' — controls Enter action
+    tierFilter: tierFilter || null, // 📖 Track current tier filter (null if no --tier flag)
   }
 
   // 📖 Enter alternate screen — animation runs here, zero scrollback pollution
@@ -1096,6 +1104,40 @@ async function main() {
   }
   process.on('SIGINT',  () => exit(0))
   process.on('SIGTERM', () => exit(0))
+
+  // 📖 Apply tier filter to results based on current state.tierFilter
+  // 📖 Preserves existing ping history when filtering
+  function applyTierFilter() {
+    const allModels = MODELS.map(([modelId, label, tier], i) => ({
+      idx: i + 1, modelId, label, tier,
+      status: 'pending',
+      pings: [],
+      httpCode: null,
+    }))
+    
+    if (!state.tierFilter) {
+      return allModels
+    }
+    
+    // 📖 Filter models by tier and preserve existing ping history
+    const filteredModels = allModels.filter(model => 
+      TIER_LETTER_MAP[state.tierFilter].includes(model.tier)
+    )
+    
+    // 📖 Try to preserve existing ping data from current results
+    return filteredModels.map(model => {
+      const existingResult = state.results.find(r => r.modelId === model.modelId)
+      if (existingResult) {
+        return {
+          ...model,
+          status: existingResult.status,
+          pings: [...existingResult.pings],
+          httpCode: existingResult.httpCode
+        }
+      }
+      return model
+    })
+  }
 
   // 📖 Setup keyboard input for interactive selection during pings
   // 📖 Use readline with keypress event for arrow key handling
@@ -1129,7 +1171,26 @@ async function main() {
     // 📖 Minimum 1s, maximum 60s
     if (key.name === 'w') {
       state.pingInterval = Math.max(1000, state.pingInterval - 1000)
-      return
+    } else if (key.name === 'x') {
+      state.pingInterval = Math.min(60000, state.pingInterval + 1000)
+    }
+
+    // 📖 Tier filtering keys: E=elevate (more restrictive), D=descend (less restrictive)
+    // 📖 Cycle through: null → 'S' → 'A' → 'B' → 'C' → null (all tiers)
+    if (key.name === 'e') {
+      const tierOrder = [null, 'S', 'A', 'B', 'C']
+      const currentIndex = tierOrder.indexOf(state.tierFilter)
+      const nextIndex = (currentIndex + 1) % tierOrder.length
+      state.tierFilter = tierOrder[nextIndex]
+      state.results = applyTierFilter()
+      state.cursor = Math.min(state.cursor, state.results.length - 1)
+    } else if (key.name === 'd') {
+      const tierOrder = [null, 'C', 'B', 'A', 'S']
+      const currentIndex = tierOrder.indexOf(state.tierFilter)
+      const nextIndex = (currentIndex - 1 + tierOrder.length) % tierOrder.length
+      state.tierFilter = tierOrder[nextIndex]
+      state.results = applyTierFilter()
+      state.cursor = Math.min(state.cursor, state.results.length - 1)
     }
 
     if (key.name === 'x') {
@@ -1205,10 +1266,10 @@ async function main() {
   // 📖 Animation loop: clear alt screen + redraw table at FPS with cursor
   const ticker = setInterval(() => {
     state.frame++
-    process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode))
+    process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, state.tierFilter))
   }, Math.round(1000 / FPS))
 
-  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode))
+  process.stdout.write(ALT_CLEAR + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, state.tierFilter))
 
   // ── Continuous ping loop — ping all models every N seconds forever ──────────
 

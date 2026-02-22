@@ -56,7 +56,7 @@
 - **🎨 Clean output** — Zero scrollback pollution, interface stays open until Ctrl+C
 - **📶 Status indicators** — UP ✅ · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
 - **🔧 Multi-source support** — Extensible architecture via `sources.js` (add new providers easily)
-- **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier`
+- **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with E/D keys
 
 ---
 
@@ -225,6 +225,15 @@ free-coding-models --tier A     # Only A+, A, A- (solid performers)
 free-coding-models --tier B     # Only B+, B (lightweight options)
 free-coding-models --tier C     # Only C (edge/minimal models)
 ```
+
+#### Dynamic tier filtering with E/D keys
+
+During runtime, use **E** and **D** keys to dynamically adjust the tier filter:
+
+- **E** (Elevate) — Show fewer, higher-tier models (cycle: All → S → A → B → C → All)
+- **D** (Descend) — Show more, lower-tier models (cycle: All → C → B → A → S → All)
+
+Current tier filter is shown in the header badge (e.g., `[Tier S]`)
 
 ---
 
@@ -439,6 +448,8 @@ This script:
 - **R/T/O/M/P/A/S/V/U** — Sort by Rank/Tier/Origin/Model/Ping/Avg/Status/Verdict/Uptime
 - **W** — Decrease ping interval (faster pings)
 - **X** — Increase ping interval (slower pings)
+- **E** — Elevate tier filter (show fewer, higher-tier models)
+- **D** — Descend tier filter (show more, lower-tier models)
 - **Ctrl+C** — Exit
 
 ---
