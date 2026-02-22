@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.9 — 2026-02-22
+
+### Added
+- Update available warning: red message shown above selection menu when a new npm version exists
+- "Update now" menu choice in startup mode selection to install the latest version
+
+---
+
 ## 0.1.4 — 2026-02-22
 
 ### Fixed
