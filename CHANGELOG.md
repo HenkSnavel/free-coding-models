@@ -2,6 +2,13 @@
 
 ---
 
+## 0.1.37 — 2026-02-22
+
+### Added
+- **Auto-update with sudo fallback**: When npm update fails due to permissions, automatically retries with sudo to complete the update
+
+---
+
 ## 0.1.36 — 2026-02-22
 
 ### Added

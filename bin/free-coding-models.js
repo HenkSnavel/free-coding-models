@@ -102,6 +102,7 @@ function runUpdate(latestVersion) {
   console.log()
   console.log(chalk.bold.cyan('  ⬆ Updating free-coding-models to v' + latestVersion + '...'))
   console.log()
+  
   try {
     // 📖 Force install from npm registry (ignore local cache)
     // 📖 Use --prefer-online to ensure we get the latest published version
@@ -118,8 +119,37 @@ function runUpdate(latestVersion) {
     process.exit(0)
   } catch (err) {
     console.log()
-    console.log(chalk.red('  ✖ Update failed. Try manually: npm i -g free-coding-models@' + latestVersion))
-    console.log()
+    // 📖 Check if error is permission-related (EACCES or EPERM)
+    const isPermissionError = err.code === 'EACCES' || err.code === 'EPERM' || 
+                             (err.stderr && (err.stderr.includes('EACCES') || err.stderr.includes('permission') || 
+                                              err.stderr.includes('EACCES'))) ||
+                             (err.message && (err.message.includes('EACCES') || err.message.includes('permission')))
+    
+    if (isPermissionError) {
+      console.log(chalk.yellow('  ⚠️ Permission denied. Retrying with sudo...'))
+      console.log()
+      try {
+        execSync(`sudo npm i -g free-coding-models@${latestVersion} --prefer-online`, { stdio: 'inherit' })
+        console.log()
+        console.log(chalk.green('  ✅ Update complete with sudo! Version ' + latestVersion + ' installed.'))
+        console.log()
+        console.log(chalk.dim('  🔄 Restarting with new version...'))
+        console.log()
+        
+        // 📖 Relaunch automatically with the same arguments
+        const args = process.argv.slice(2)
+        execSync(`node bin/free-coding-models.js ${args.join(' ')}`, { stdio: 'inherit' })
+        process.exit(0)
+      } catch (sudoErr) {
+        console.log()
+        console.log(chalk.red('  ✖ Update failed even with sudo. Try manually:'))
+        console.log(chalk.dim('    sudo npm i -g free-coding-models@' + latestVersion))
+        console.log()
+      }
+    } else {
+      console.log(chalk.red('  ✖ Update failed. Try manually: npm i -g free-coding-models@' + latestVersion))
+      console.log()
+    }
   }
   process.exit(1)
 }
