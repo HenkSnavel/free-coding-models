@@ -80,6 +80,38 @@ import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
 const require = createRequire(import.meta.url)
 const readline = require('readline')
 
+// ─── Version check ────────────────────────────────────────────────────────────
+const pkg = require('../package.json')
+const LOCAL_VERSION = pkg.version
+
+async function checkForUpdate() {
+  try {
+    const res = await fetch('https://registry.npmjs.org/free-coding-models/latest', { signal: AbortSignal.timeout(5000) })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.version && data.version !== LOCAL_VERSION) return data.version
+  } catch {}
+  return null
+}
+
+function runUpdate() {
+  const { execSync } = require('child_process')
+  console.log()
+  console.log(chalk.bold.cyan('  ⬆ Updating free-coding-models...'))
+  console.log()
+  try {
+    execSync('npm i -g free-coding-models', { stdio: 'inherit' })
+    console.log()
+    console.log(chalk.green('  ✅ Update complete! Please restart free-coding-models.'))
+    console.log()
+  } catch {
+    console.log()
+    console.log(chalk.red('  ✖ Update failed. Try manually: npm i -g free-coding-models'))
+    console.log()
+  }
+  process.exit(0)
+}
+
 // ─── Config path ──────────────────────────────────────────────────────────────
 const CONFIG_PATH = join(homedir(), '.free-coding-models')
 
@@ -129,8 +161,8 @@ async function promptApiKey() {
 // ─── Startup mode selection menu ──────────────────────────────────────────────
 // 📖 Shown at startup when neither --opencode nor --openclaw flag is given.
 // 📖 Simple arrow-key selector in normal terminal (not alt screen).
-// 📖 Returns 'opencode' or 'openclaw'.
-async function promptModeSelection() {
+// 📖 Returns 'opencode', 'openclaw', or 'update'.
+async function promptModeSelection(latestVersion) {
   const options = [
     {
       label: 'OpenCode',
@@ -144,6 +176,14 @@ async function promptModeSelection() {
     },
   ]
 
+  if (latestVersion) {
+    options.push({
+      label: 'Update now',
+      icon: '⬆',
+      description: `Update free-coding-models to v${latestVersion}`,
+    })
+  }
+
   return new Promise((resolve) => {
     let selected = 0
 
@@ -151,6 +191,10 @@ async function promptModeSelection() {
     const render = () => {
       process.stdout.write('\x1b[2J\x1b[H') // clear screen + cursor home
       console.log()
+      if (latestVersion) {
+        console.log(chalk.red(`  ⚠ New version available (v${latestVersion}), please run npm i -g free-coding-models to install`))
+        console.log()
+      }
       console.log(chalk.bold('  ⚡ Free Coding Models') + chalk.dim(' — Choose your tool'))
       console.log()
       for (let i = 0; i < options.length; i++) {
@@ -190,7 +234,9 @@ async function promptModeSelection() {
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
         process.stdin.removeListener('keypress', onKey)
         process.stdin.pause()
-        resolve(selected === 0 ? 'opencode' : 'openclaw')
+        const choices = ['opencode', 'openclaw']
+        if (latestVersion) choices.push('update')
+        resolve(choices[selected])
       }
     }
 
@@ -991,6 +1037,9 @@ async function main() {
     await runFiableMode(apiKey)
   }
 
+  // 📖 Check for available update (non-blocking, 5s timeout)
+  const latestVersion = await checkForUpdate()
+
   // 📖 Determine active mode:
   //   --opencode → opencode
   //   --openclaw → openclaw
@@ -1002,7 +1051,18 @@ async function main() {
     mode = 'opencode'
   } else {
     // 📖 No mode flag given — ask user with the startup menu
-    mode = await promptModeSelection()
+    mode = await promptModeSelection(latestVersion)
+  }
+
+  // 📖 Handle "update now" selection from the menu
+  if (mode === 'update') {
+    runUpdate()
+  }
+
+  // 📖 When using flags (--opencode/--openclaw), show update warning in terminal
+  if (latestVersion && (openCodeMode || openClawMode)) {
+    console.log(chalk.red(`  ⚠ New version available (v${latestVersion}), please run npm i -g free-coding-models to install`))
+    console.log()
   }
 
   // 📖 Filter models to only show top tiers if BEST mode is active
