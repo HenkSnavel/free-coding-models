@@ -57,13 +57,14 @@ describe('sources.js data integrity', () => {
     assert.ok(nvidiaNim.length > 0, 'nvidiaNim should have models')
   })
 
-  it('every model entry has [modelId, label, tier] structure', () => {
+  it('every model entry has [modelId, label, tier, sweScore] structure', () => {
     for (const entry of nvidiaNim) {
       assert.ok(Array.isArray(entry), `Entry should be an array: ${JSON.stringify(entry)}`)
-      assert.equal(entry.length, 3, `Entry should have 3 elements: ${JSON.stringify(entry)}`)
+      assert.equal(entry.length, 4, `Entry should have 4 elements: ${JSON.stringify(entry)}`)
       assert.equal(typeof entry[0], 'string', `modelId should be string: ${entry[0]}`)
       assert.equal(typeof entry[1], 'string', `label should be string: ${entry[1]}`)
       assert.equal(typeof entry[2], 'string', `tier should be string: ${entry[2]}`)
+      assert.equal(typeof entry[3], 'string', `sweScore should be string: ${entry[3]}`)
     }
   })
 
@@ -89,7 +90,7 @@ describe('sources.js data integrity', () => {
 
   it('sources object has nvidia key with correct structure', () => {
     assert.ok(sources.nvidia, 'sources.nvidia should exist')
-    assert.equal(sources.nvidia.name, 'NVIDIA NIM')
+    assert.equal(sources.nvidia.name, 'NIM')
     assert.ok(Array.isArray(sources.nvidia.models))
     assert.equal(sources.nvidia.models, nvidiaNim)
   })

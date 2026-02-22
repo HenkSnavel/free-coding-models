@@ -393,6 +393,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const W_TIER = 6
   const W_SOURCE = 14
   const W_MODEL = 26
+  const W_SWE = 9
   const W_PING = 14
   const W_AVG = 11
   const W_STATUS = 18
@@ -421,25 +422,34 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const tierH    = 'Tier'
   const originH  = 'Origin'
   const modelH   = 'Model'
+  const sweH     = sortColumn === 'swe' ? dir + ' SWE%' : 'SWE%'
   const pingH    = sortColumn === 'ping' ? dir + ' Latest Ping' : 'Latest Ping'
   const avgH     = sortColumn === 'avg' ? dir + ' Avg Ping' : 'Avg Ping'
   const statusH  = sortColumn === 'status' ? dir + ' Status' : 'Status'
   const verdictH = sortColumn === 'verdict' ? dir + ' Verdict' : 'Verdict'
   const uptimeH  = sortColumn === 'uptime' ? dir + ' Up%' : 'Up%'
 
+  // 📖 Helper to colorize first letter for keyboard shortcuts
+  const colorFirst = (text, width, colorFn = chalk.yellow) => {
+    const first = text[0]
+    const rest = text.slice(1)
+    return (colorFn(first) + chalk.dim(rest)).padEnd(width)
+  }
+
   // 📖 Now colorize after padding is calculated on plain text
-  const rankH_c    = chalk.dim(rankH.padEnd(W_RANK))
-  const tierH_c    = chalk.dim(tierH.padEnd(W_TIER))
-  const originH_c  = sortColumn === 'origin' ? chalk.bold.cyan(originH.padEnd(W_SOURCE)) : chalk.dim(originH.padEnd(W_SOURCE))
-  const modelH_c   = chalk.dim(modelH.padEnd(W_MODEL))
-  const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : chalk.dim(pingH.padEnd(W_PING))
-  const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : chalk.dim(avgH.padEnd(W_AVG))
-  const statusH_c  = sortColumn === 'status' ? chalk.bold.cyan(statusH.padEnd(W_STATUS)) : chalk.dim(statusH.padEnd(W_STATUS))
-  const verdictH_c = sortColumn === 'verdict' ? chalk.bold.cyan(verdictH.padEnd(W_VERDICT)) : chalk.dim(verdictH.padEnd(W_VERDICT))
-  const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : chalk.dim(uptimeH.padStart(W_UPTIME))
+  const rankH_c    = colorFirst(rankH, W_RANK)
+  const tierH_c    = colorFirst('Tier', W_TIER)
+  const originH_c  = sortColumn === 'origin' ? chalk.bold.cyan(originH.padEnd(W_SOURCE)) : colorFirst(originH, W_SOURCE)
+  const modelH_c   = colorFirst(modelH, W_MODEL)
+  const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst(sweH, W_SWE)
+  const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : colorFirst(pingH.replace('Latest ', ''), W_PING)
+  const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : colorFirst(avgH.replace('Avg ', ''), W_AVG)
+  const statusH_c  = sortColumn === 'status' ? chalk.bold.cyan(statusH.padEnd(W_STATUS)) : colorFirst(statusH, W_STATUS)
+  const verdictH_c = sortColumn === 'verdict' ? chalk.bold.cyan(verdictH.padEnd(W_VERDICT)) : colorFirst(verdictH, W_VERDICT)
+  const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
 
   // 📖 Header with proper spacing
-  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + originH_c + '  ' + modelH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + statusH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
+  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + originH_c + '  ' + modelH_c + '  ' + sweH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + statusH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
 
   // 📖 Separator line
   lines.push(
@@ -448,6 +458,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('─'.repeat(W_TIER)) + '  ' +
     '─'.repeat(W_SOURCE) + '  ' +
     '─'.repeat(W_MODEL) + '  ' +
+    chalk.dim('─'.repeat(W_SWE)) + '  ' +
     chalk.dim('─'.repeat(W_PING)) + '  ' +
     chalk.dim('─'.repeat(W_AVG)) + '  ' +
     chalk.dim('─'.repeat(W_STATUS)) + '  ' +
@@ -471,8 +482,14 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Left-aligned columns - pad plain text first, then colorize
     const num = chalk.dim(String(r.idx).padEnd(W_RANK))
     const tier = tierFn(r.tier.padEnd(W_TIER))
-    const source = chalk.green('NVIDIA NIM'.padEnd(W_SOURCE))
+    const source = chalk.green('NIM'.padEnd(W_SOURCE))
     const name = r.label.slice(0, W_MODEL).padEnd(W_MODEL)
+    const sweScore = r.sweScore ?? '—'
+    const sweCell = sweScore !== '—' && parseFloat(sweScore) >= 50 
+      ? chalk.greenBright(sweScore.padEnd(W_SWE))
+      : sweScore !== '—' && parseFloat(sweScore) >= 30
+      ? chalk.yellow(sweScore.padEnd(W_SWE))
+      : chalk.dim(sweScore.padEnd(W_SWE))
 
     // 📖 Latest ping - pings are objects: { ms, code }
     // 📖 Only show response time for successful pings, "—" for errors (error code is in Status column)
@@ -579,7 +596,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     }
 
     // 📖 Build row with double space between columns
-    const row = '  ' + num + '  ' + tier + '  ' + source + '  ' + name + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
+    const row = '  ' + num + '  ' + tier + '  ' + source + '  ' + name + '  ' + sweCell + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
 
     if (isCursor) {
       lines.push(chalk.bgRgb(139, 0, 139)(row))
@@ -601,9 +618,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Tier  •  Z Mode  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/L/A/S/V/U/E Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Tier  •  Z Mode  •  Ctrl+C Exit`))
   lines.push('')
-  lines.push(chalk.dim('  Made with ') + '💖' + chalk.dim(' by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '💬 ' + '\x1b]8;;https://discord.gg/WKA3TwYVuZ\x1b\\Join our Discord!\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Read the docs on GitHub\x1b]8;;\x1b\\')
+  lines.push(chalk.dim('  Made with ') + '💖' + chalk.dim(' by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '💬 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/WKA3TwYVuZ\x1b\\Join our Discord! (link fixed)\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Read the docs on GitHub\x1b]8;;\x1b\\')
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
@@ -973,8 +990,8 @@ async function runFiableMode(apiKey) {
   console.log(chalk.cyan('  ⚡ Analyzing models for reliability (10 seconds)...'))
   console.log()
 
-  let results = MODELS.map(([modelId, label, tier], i) => ({
-    idx: i + 1, modelId, label, tier,
+  let results = MODELS.map(([modelId, label, tier, sweScore], i) => ({
+    idx: i + 1, modelId, label, tier, sweScore,
     status: 'pending',
     pings: [],
     httpCode: null,
@@ -1064,8 +1081,8 @@ async function main() {
   // 📖 This section is now handled by the update notification menu above
 
   // 📖 Create results array with all models initially visible
-  let results = MODELS.map(([modelId, label, tier], i) => ({
-    idx: i + 1, modelId, label, tier,
+  let results = MODELS.map(([modelId, label, tier, sweScore], i) => ({
+    idx: i + 1, modelId, label, tier, sweScore,
     status: 'pending',
     pings: [],  // 📖 All ping results (ms or 'TIMEOUT')
     httpCode: null,
@@ -1174,10 +1191,11 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
 
-    // 📖 Sorting keys: R=rank, T=tier, O=origin, M=model, P=ping, A=avg, S=status, V=verdict, U=uptime
+    // 📖 Sorting keys: R=rank, T=tier, O=origin, M=model, L=latest ping, A=avg ping, S=status, V=verdict, U=uptime, E=SWE-bench
     const sortKeys = {
       'r': 'rank', 't': 'tier', 'o': 'origin', 'm': 'model',
-      'p': 'ping', 'a': 'avg', 's': 'status', 'v': 'verdict', 'u': 'uptime'
+      'l': 'ping', 'a': 'avg', 's': 'status', 'v': 'verdict', 'u': 'uptime',
+      'e': 'swe'
     }
 
     if (sortKeys[key.name]) {
