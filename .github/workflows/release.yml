@@ -1,3 +1,13 @@
+# 📖 Release workflow — publishes to npm and creates a GitHub Release.
+#
+# Triggered on every push to main. Compares the version in package.json
+# against existing git tags — if no tag exists for that version, it publishes
+# to npm and creates a GitHub Release with auto-generated notes.
+#
+# 📖 Requires NPM_TOKEN secret:
+#    Settings → Secrets and variables → Actions → New repository secret
+#    Name: NPM_TOKEN — Value: your npm access token (npmjs.com → Access Tokens)
+
 name: Release
 
 on:
@@ -13,20 +23,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 📖 Extract version from package.json and check if this version was already released
+      - name: Check if release needed
+        id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ Tag v$VERSION already exists — skipping release"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "🚀 New version $VERSION detected — will publish"
+          fi
+
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: |
-          git config user.name "GitHub Actions"
-          git config user.email "github-actions@github.com"
-      - run: npm version patch
-      - run: git push --follow-tags
-      - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip == 'false'
         with:
           node-version: '20'
           registry-url: https://registry.npmjs.org
-      - run: npm publish --access public
+
+      - run: npm ci
+        if: steps.check.outputs.skip == 'false'
+
+      # 📖 Publish to npm registry
+      - name: Publish to npm
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # 📖 Create a git tag and GitHub Release for this version
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes
