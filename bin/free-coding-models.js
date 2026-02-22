@@ -328,10 +328,13 @@ const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].
 
 // 📖 renderTable: mode param controls footer hint text (opencode vs openclaw)
 function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilter = null) {
-  const up      = results.filter(r => r.status === 'up').length
-  const down    = results.filter(r => r.status === 'down').length
-  const timeout = results.filter(r => r.status === 'timeout').length
-  const pending = results.filter(r => r.status === 'pending').length
+  // 📖 Filter out hidden models for display
+  const visibleResults = results.filter(r => !r.hidden)
+  
+  const up      = visibleResults.filter(r => r.status === 'up').length
+  const down    = visibleResults.filter(r => r.status === 'down').length
+  const timeout = visibleResults.filter(r => r.status === 'timeout').length
+  const pending = visibleResults.filter(r => r.status === 'pending').length
 
   // 📖 Calculate seconds until next ping
   const timeSinceLastPing = Date.now() - lastPingTime
@@ -372,7 +375,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const W_UPTIME = 6
 
   // 📖 Sort models using the shared helper
-  const sorted = sortResults(results, sortColumn, sortDirection)
+  const sorted = sortResults(visibleResults, sortColumn, sortDirection)
 
   const lines = [
     '',
@@ -1055,21 +1058,33 @@ async function main() {
     console.log()
   }
 
-  // 📖 Filter models to only show top tiers if BEST mode is active
+  // 📖 Create results array with all models initially visible
   let results = MODELS.map(([modelId, label, tier], i) => ({
     idx: i + 1, modelId, label, tier,
     status: 'pending',
     pings: [],  // 📖 All ping results (ms or 'TIMEOUT')
     httpCode: null,
+    hidden: false,  // 📖 Simple flag to hide/show models
   }))
 
+  // 📖 Apply filters by setting hidden flag
   if (bestMode) {
-    results = results.filter(r => r.tier === 'S+' || r.tier === 'S' || r.tier === 'A+')
+    results.forEach(r => {
+      r.hidden = !(r.tier === 'S+' || r.tier === 'S' || r.tier === 'A+')
+    })
   }
 
-  // 📖 Apply tier letter filter if --tier X was given
+  // 📖 Apply tier letter filter if --tier X was given (just sets initial state)
+  // 📖 User can still change filter with E/D keys later
   if (tierFilter) {
-    results = filterByTierOrExit(results, tierFilter)
+    const tierSet = TIER_LETTER_MAP[tierFilter]
+    if (!tierSet) {
+      console.error(chalk.red(`  ✖ Unknown tier "${tierFilter}". Valid tiers: S, A, B, C`))
+      process.exit(1)
+    }
+    results.forEach(r => {
+      r.hidden = !tierSet.includes(r.tier)
+    })
   }
 
   // 📖 Add interactive selection state - cursor index and user's choice
@@ -1108,20 +1123,14 @@ async function main() {
   // 📖 Apply tier filter based on current state.tierFilter
   // 📖 This preserves all ping history by merging with existing results
   function applyTierFilter() {
-    const modelsToShow = !state.tierFilter 
-      ? MODELS 
-      : MODELS.filter(([, , tier]) => TIER_LETTER_MAP[state.tierFilter].includes(tier))
+    const tierSet = state.tierFilter ? TIER_LETTER_MAP[state.tierFilter] : null
     
-    // 📖 Build results array, preserving existing ping data
-    return modelsToShow.map(([modelId, label, tier], i) => {
-      const existingResult = state.results.find(r => r.modelId === modelId)
-      return existingResult || {
-        idx: i + 1, modelId, label, tier,
-        status: 'pending',
-        pings: [],
-        httpCode: null,
-      }
+    // 📖 Simple approach: just update hidden flag on existing results
+    state.results.forEach(r => {
+      r.hidden = tierSet ? !tierSet.includes(r.tier) : false
     })
+    
+    return state.results  // 📖 Return same array, just updated hidden flags
   }
 
   // 📖 Setup keyboard input for interactive selection during pings
@@ -1279,14 +1288,14 @@ async function main() {
   }
 
   // 📖 Initial ping of all models
-  const initialPing = Promise.all(results.map(r => pingModel(r)))
+  const initialPing = Promise.all(state.results.map(r => pingModel(r)))
 
   // 📖 Continuous ping loop with dynamic interval (adjustable with W/X keys)
   const schedulePing = () => {
     state.pingIntervalObj = setTimeout(async () => {
       state.lastPingTime = Date.now()
 
-      results.forEach(r => {
+      state.results.forEach(r => {
         pingModel(r).catch(() => {
           // Individual ping failures don't crash the loop
         })
