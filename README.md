@@ -8,6 +8,10 @@
 <h1 align="center">free-coding-models</h1>
 
 <p align="center">
+  <strong>Want to contribute or discuss the project?</strong> Join our <a href="https://discord.gg/U4vz7mYQ">Discord community</a>!
+</p>
+
+<p align="center">
 
 ```
 1. Create a free API key on NVIDIA → https://build.nvidia.com

@@ -347,7 +347,7 @@ function calculateViewport(terminalRows, scrollOffset, totalModels) {
 }
 
 // 📖 renderTable: mode param controls footer hint text (opencode vs openclaw)
-function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilter = null, scrollOffset = 0, terminalRows = 0) {
+function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilterMode = 0, scrollOffset = 0, terminalRows = 0) {
   // 📖 Filter out hidden models for display
   const visibleResults = results.filter(r => !r.hidden)
 
@@ -383,8 +383,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 
   // 📖 Tier filter badge shown when filtering is active
   let tierBadge = ''
-  if (tierFilter) {
-    tierBadge = chalk.bold.rgb(255, 200, 0)(` [Tier ${tierFilter}]`)
+  if (tierFilterMode > 0) {
+    const tierNames = ['All', 'S+/S', 'A+/A/A-', 'B+/B', 'C']
+    tierBadge = chalk.bold.rgb(255, 200, 0)(` [${tierNames[tierFilterMode]}]`)
   }
 
   // 📖 Column widths (generous spacing with margins)
@@ -600,9 +601,11 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  E↑/D↓ Tier  •  Z Mode  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Tier  •  Z Mode  •  Ctrl+C Exit`))
   lines.push('')
-  lines.push(chalk.dim('  made with ') + '🩷' + chalk.dim(' by vava-nessa  •  ') + chalk.dim.underline('https://github.com/vava-nessa/free-coding-models'))
+  lines.push(chalk.dim('  Made with love by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\')
+  lines.push(chalk.dim('  📂 Repository GitHub: ') + chalk.dim.underline('https://github.com/vava-nessa/free-coding-models'))
+  lines.push(chalk.dim('  💬 Contribuer et discuter sur notre Discord: ') + chalk.dim.underline('https://discord.gg/U4vz7mYQ'))
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
@@ -1137,11 +1140,27 @@ async function main() {
   process.on('SIGINT',  () => exit(0))
   process.on('SIGTERM', () => exit(0))
 
-  // 📖 No tier filtering by default - all models visible
+  // 📖 Tier filtering system - cycles through filter modes
+  let tierFilterMode = 0 // 0=all, 1=S+/S, 2=A+/A/A-, 3=B+/B, 4=C
   function applyTierFilter() {
-    // 📖 All models visible by default
     state.results.forEach(r => {
-      r.hidden = false
+      switch (tierFilterMode) {
+        case 0: // All tiers visible
+          r.hidden = false
+          break
+        case 1: // S+ and S only
+          r.hidden = !(r.tier === 'S+' || r.tier === 'S')
+          break
+        case 2: // A+, A, A- only
+          r.hidden = !(r.tier === 'A+' || r.tier === 'A' || r.tier === 'A-')
+          break
+        case 3: // B+ and B only
+          r.hidden = !(r.tier === 'B+' || r.tier === 'B')
+          break
+        case 4: // C only
+          r.hidden = r.tier !== 'C'
+          break
+      }
     })
     
     return state.results
@@ -1184,7 +1203,13 @@ async function main() {
       state.pingInterval = Math.min(60000, state.pingInterval + 1000)
     }
 
-    // 📖 Tier filtering removed for simplicity - all models visible by default
+    // 📖 Tier toggle key: T = cycle through tier filters (all → S+/S → A+/A/A- → B+/B → C → all)
+    if (key.name === 't') {
+      tierFilterMode = (tierFilterMode + 1) % 5
+      applyTierFilter()
+      adjustScrollOffset(state)
+      return
+    }
 
     // 📖 Mode toggle key: Z = cycle through modes (CLI → Desktop → OpenClaw)
     if (key.name === 'z') {
@@ -1270,10 +1295,10 @@ async function main() {
   // 📖 Animation loop: clear alt screen + redraw table at FPS with cursor
   const ticker = setInterval(() => {
     state.frame++
-    process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, null, state.scrollOffset, state.terminalRows))
+    process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows))
   }, Math.round(1000 / FPS))
 
-  process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, null, state.scrollOffset, state.terminalRows))
+  process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows))
 
   // ── Continuous ping loop — ping all models every N seconds forever ──────────
 
