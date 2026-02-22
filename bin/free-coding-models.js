@@ -452,16 +452,16 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
 
   // 📖 Header with proper spacing
-  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + originH_c + '  ' + modelH_c + '  ' + sweH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
+  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sweH_c + '  ' + modelH_c + '  ' + originH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
 
   // 📖 Separator line
   lines.push(
     '  ' +
     chalk.dim('─'.repeat(W_RANK)) + '  ' +
     chalk.dim('─'.repeat(W_TIER)) + '  ' +
-    '─'.repeat(W_SOURCE) + '  ' +
-    '─'.repeat(W_MODEL) + '  ' +
     chalk.dim('─'.repeat(W_SWE)) + '  ' +
+    '─'.repeat(W_MODEL) + '  ' +
+    '─'.repeat(W_SOURCE) + '  ' +
     chalk.dim('─'.repeat(W_PING)) + '  ' +
     chalk.dim('─'.repeat(W_AVG)) + '  ' +
     chalk.dim('─'.repeat(W_STATUS)) + '  ' +
@@ -599,7 +599,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     }
 
     // 📖 Build row with double space between columns
-    const row = '  ' + num + '  ' + tier + '  ' + source + '  ' + name + '  ' + sweCell + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
+    const row = '  ' + num + '  ' + tier + '  ' + sweCell + '  ' + name + '  ' + source + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
 
     if (isCursor) {
       lines.push(chalk.bgRgb(139, 0, 139)(row))
