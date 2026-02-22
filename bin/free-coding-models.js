@@ -109,14 +109,19 @@ function runUpdate(latestVersion) {
     console.log()
     console.log(chalk.green('  ✅ Update complete! Version ' + latestVersion + ' installed.'))
     console.log()
-    console.log(chalk.dim('  📝 Please restart free-coding-models to use the new version.'))
+    console.log(chalk.dim('  🔄 Restarting with new version...'))
     console.log()
+    
+    // 📖 Relaunch automatically with the same arguments
+    const args = process.argv.slice(2)
+    execSync(`free-coding-models ${args.join(' ')}`, { stdio: 'inherit' })
+    process.exit(0)
   } catch (err) {
     console.log()
     console.log(chalk.red('  ✖ Update failed. Try manually: npm i -g free-coding-models@' + latestVersion))
     console.log()
   }
-  process.exit(0)
+  process.exit(1)
 }
 
 // ─── Config path ──────────────────────────────────────────────────────────────
@@ -165,73 +170,62 @@ async function promptApiKey() {
   })
 }
 
-// ─── Startup mode selection menu ──────────────────────────────────────────────
-// 📖 Shown at startup when neither --opencode nor --openclaw flag is given.
-// 📖 Simple arrow-key selector in normal terminal (not alt screen).
-// 📖 Returns 'opencode', 'openclaw', or 'update'.
-async function promptModeSelection(latestVersion) {
-  const options = [
-    {
-      label: 'OpenCode CLI',
-      icon: '💻',
-      description: 'Press Enter on a model → launch OpenCode CLI with it as default',
-    },
-    {
-      label: 'OpenCode Desktop',
-      icon: '🖥',
-      description: 'Press Enter on a model → set model & open OpenCode Desktop app',
-    },
-    {
-      label: 'OpenClaw',
-      icon: '🦞',
-      description: 'Press Enter on a model → set it as default in OpenClaw config',
-    },
-  ]
-
-  if (latestVersion) {
-    options.push({
-      label: 'Update now',
-      icon: '⬆',
-      description: `Update free-coding-models to v${latestVersion}`,
-    })
-  }
-
-  // 📖 Add "Read Changelogs" option when an update is available or was just updated
-  if (latestVersion) {
-    options.push({
-      label: 'Read Changelogs',
-      icon: '📋',
-      description: 'Open local CHANGELOG.md file',
-    })
-  }
+// ─── Update notification menu ──────────────────────────────────────────────
+// 📖 Shown ONLY when a new version is available, to prompt user to update
+// 📖 Centered, clean presentation that doesn't block normal usage
+// 📖 Returns 'update', 'changelogs', or null to continue without update
+async function promptUpdateNotification(latestVersion) {
+  if (!latestVersion) return null
 
   return new Promise((resolve) => {
     let selected = 0
+    const options = [
+      {
+        label: 'Update now',
+        icon: '⬆',
+        description: `Update free-coding-models to v${latestVersion}`,
+      },
+      {
+        label: 'Read Changelogs',
+        icon: '📋',
+        description: 'Open GitHub changelog',
+      },
+      {
+        label: 'Continue without update',
+        icon: '▶',
+        description: 'Use current version',
+      },
+    ]
 
-    // 📖 Render the menu to stdout (clear + redraw)
+    // 📖 Centered render function
     const render = () => {
       process.stdout.write('\x1b[2J\x1b[H') // clear screen + cursor home
+      
+      // 📖 Calculate centering
+      const terminalWidth = process.stdout.columns || 80
+      const maxWidth = Math.min(terminalWidth - 4, 70)
+      const centerPad = ' '.repeat(Math.max(0, Math.floor((terminalWidth - maxWidth) / 2)))
+      
       console.log()
-      if (latestVersion) {
-        console.log(chalk.red(`  ⚠ New version available (v${latestVersion}), please run npm i -g free-coding-models to install`))
-        console.log()
-      }
-      console.log(chalk.bold('  ⚡ Free Coding Models') + chalk.dim(` v${LOCAL_VERSION} — Choose your tool`))
+      console.log(centerPad + chalk.bold.red('  ⚠ UPDATE AVAILABLE'))
+      console.log(centerPad + chalk.red(`  Version ${latestVersion} is ready to install`))
       console.log()
-      console.log(chalk.yellow.bold('  ⚠️  Warning: ') + chalk.yellow('Small terminals may break the layout — maximize your window for best results!'))
+      console.log(centerPad + chalk.bold('  ⚡ Free Coding Models') + chalk.dim(` v${LOCAL_VERSION}`))
       console.log()
+      
       for (let i = 0; i < options.length; i++) {
         const isSelected = i === selected
         const bullet = isSelected ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
         const label = isSelected
           ? chalk.bold.white(options[i].icon + ' ' + options[i].label)
           : chalk.dim(options[i].icon + ' ' + options[i].label)
-        const desc = chalk.dim('  ' + options[i].description)
-        console.log(bullet + label)
-        console.log(chalk.dim('       ' + options[i].description))
+        
+        console.log(centerPad + bullet + label)
+        console.log(centerPad + chalk.dim('       ' + options[i].description))
         console.log()
       }
-      console.log(chalk.dim('  ↑↓ Navigate  •  Enter Select  •  Ctrl+C Exit'))
+      
+      console.log(centerPad + chalk.dim('  ↑↓ Navigate  •  Enter Select  •  Ctrl+C Continue'))
       console.log()
     }
 
@@ -245,7 +239,8 @@ async function promptModeSelection(latestVersion) {
       if (key.ctrl && key.name === 'c') {
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
         process.stdin.removeListener('keypress', onKey)
-        process.exit(0)
+        resolve(null) // Continue without update
+        return
       }
       if (key.name === 'up' && selected > 0) {
         selected--
@@ -257,10 +252,10 @@ async function promptModeSelection(latestVersion) {
         if (process.stdin.isTTY) process.stdin.setRawMode(false)
         process.stdin.removeListener('keypress', onKey)
         process.stdin.pause()
-        const choices = ['opencode', 'opencode-desktop', 'openclaw']
-        if (latestVersion) choices.push('update')
-        if (latestVersion) choices.push('changelogs')
-        resolve(choices[selected])
+        
+        if (selected === 0) resolve('update')
+        else if (selected === 1) resolve('changelogs')
+        else resolve(null) // Continue without update
       }
     }
 
@@ -348,6 +343,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       : chalk.dim(`next ping ${secondsUntilNext}s`)
 
   // 📖 Mode badge shown in header so user knows what Enter will do
+  // 📖 Now includes key hint for mode toggle
   let modeBadge
   if (mode === 'openclaw') {
     modeBadge = chalk.bold.rgb(255, 100, 50)(' [🦞 OpenClaw]')
@@ -356,6 +352,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   } else {
     modeBadge = chalk.bold.rgb(0, 200, 255)(' [💻 CLI]')
   }
+  
+  // 📖 Add mode toggle hint
+  const modeHint = chalk.dim.yellow(' (Z to toggle)')
 
   // 📖 Tier filter badge shown when filtering is active
   let tierBadge = ''
@@ -379,7 +378,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 
   const lines = [
     '',
-    `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${tierBadge}   ` +
+    `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${modeHint}${tierBadge}   ` +
       chalk.greenBright(`✅ ${up}`) + chalk.dim(' up  ') +
       chalk.yellow(`⏱ ${timeout}`) + chalk.dim(' timeout  ') +
       chalk.red(`❌ ${down}`) + chalk.dim(' down  ') +
@@ -565,7 +564,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  E↑/D↓ Tier  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/T/O/M/P/A/S/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  E↑/D↓ Tier  •  Z Mode  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(chalk.dim('  made with ') + '🩷' + chalk.dim(' by vava-nessa  •  ') + chalk.dim.underline('https://github.com/vava-nessa/free-coding-models'))
   lines.push('')
@@ -1026,7 +1025,7 @@ async function main() {
   // 📖 Determine active mode:
   //   --opencode → opencode
   //   --openclaw → openclaw
-  //   neither    → show interactive startup menu
+  //   neither    → default to OpenCode CLI mode
   let mode
   if (openClawMode) {
     mode = 'openclaw'
@@ -1035,29 +1034,36 @@ async function main() {
   } else if (openCodeMode) {
     mode = 'opencode'
   } else {
-    // 📖 No mode flag given — ask user with the startup menu
-    mode = await promptModeSelection(latestVersion)
+    // 📖 No mode flag given — default to OpenCode CLI mode
+    mode = 'opencode'
   }
 
-  // 📖 Handle "update now" selection from the menu
-  if (mode === 'update') {
+  // 📖 AUTO-UPDATE: When a new version is available, update automatically
+  // 📖 This replaces the manual update prompt
+  if (latestVersion && !openCodeMode && !openCodeDesktopMode && !openClawMode) {
+    console.log(chalk.bold.cyan(`  ⬆ Auto-updating to v${latestVersion}...`))
+    console.log()
     runUpdate(latestVersion)
   }
 
-  // 📖 Handle "Read Changelogs" selection — open local CHANGELOG.md file
-  if (mode === 'changelogs') {
-    const { exec } = await import('child_process')
-    const changelogPath = join(process.cwd(), 'CHANGELOG.md')
-    exec(`open "${changelogPath}"`)
-    console.log(chalk.dim('  📋 Opening local changelogs file…'))
-    process.exit(0)
+  // 📖 Show update notification menu ONLY when using flags (--opencode/--openclaw)
+  // 📖 This maintains backward compatibility for users who prefer manual updates
+  if (latestVersion && (openCodeMode || openCodeDesktopMode || openClawMode)) {
+    const updateAction = await promptUpdateNotification(latestVersion)
+    
+    if (updateAction === 'update') {
+      runUpdate(latestVersion)
+    } else if (updateAction === 'changelogs') {
+      const { exec } = await import('child_process')
+      const githubUrl = 'https://github.com/vava-nessa/free-coding-models/blob/main/CHANGELOG.md'
+      exec(`open "${githubUrl}"`)
+      console.log(chalk.dim('  📋 Opening GitHub changelogs…'))
+      process.exit(0)
+    }
+    // 📖 If user selects "Continue without update" or presses Ctrl+C, continue normally
   }
 
-  // 📖 When using flags (--opencode/--openclaw), show update warning in terminal
-  if (latestVersion && (openCodeMode || openCodeDesktopMode || openClawMode)) {
-    console.log(chalk.red(`  ⚠ New version available (v${latestVersion}), please run npm i -g free-coding-models to install`))
-    console.log()
-  }
+  // 📖 This section is now handled by the update notification menu above
 
   // 📖 Create results array with all models initially visible
   let results = MODELS.map(([modelId, label, tier], i) => ({
@@ -1186,6 +1192,15 @@ async function main() {
       state.tierFilter = tierOrder[nextIndex]
       state.results = applyTierFilter()
       state.cursor = Math.min(state.cursor, state.results.length - 1)
+    }
+
+    // 📖 Mode toggle key: Z = cycle through modes (CLI → Desktop → OpenClaw)
+    if (key.name === 'z') {
+      const modeOrder = ['opencode', 'opencode-desktop', 'openclaw']
+      const currentIndex = modeOrder.indexOf(state.mode)
+      const nextIndex = (currentIndex + 1) % modeOrder.length
+      state.mode = modeOrder[nextIndex]
+      return
     }
 
     if (key.name === 'x') {
