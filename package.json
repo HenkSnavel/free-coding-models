@@ -47,7 +47,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "start": "node bin/free-coding-models.js"
+    "start": "node bin/free-coding-models.js",
+    "test": "node --test test/test.js"
   },
   "dependencies": {
     "chalk": "^5.4.1"

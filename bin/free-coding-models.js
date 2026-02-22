@@ -76,6 +76,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { MODELS } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
+import { getAvg, getVerdict, getUptime, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
 
 const require = createRequire(import.meta.url)
 const readline = require('readline')
@@ -299,90 +300,8 @@ const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].
 
 // ─── Table renderer ───────────────────────────────────────────────────────────
 
-const TIER_ORDER = ['S+', 'S', 'A+', 'A', 'A-', 'B+', 'B', 'C']
-const getAvg = r => {
-  // 📖 Calculate average only from successful pings (code 200)
-  // 📖 pings are objects: { ms, code }
-  const successfulPings = (r.pings || []).filter(p => p.code === '200')
-  if (successfulPings.length === 0) return Infinity
-  return Math.round(successfulPings.reduce((a, b) => a + b.ms, 0) / successfulPings.length)
-}
-
-// 📖 Verdict order for sorting
-const VERDICT_ORDER = ['Perfect', 'Normal', 'Slow', 'Very Slow', 'Overloaded', 'Unstable', 'Not Active', 'Pending']
-
-// 📖 Get verdict for a model result
-const getVerdict = (r) => {
-  const avg = getAvg(r)
-  const wasUpBefore = r.pings.length > 0 && r.pings.some(p => p.code === '200')
-
-  // 📖 429 = rate limited = Overloaded
-  if (r.httpCode === '429') return 'Overloaded'
-  if ((r.status === 'timeout' || r.status === 'down') && wasUpBefore) return 'Unstable'
-  if (r.status === 'timeout' || r.status === 'down') return 'Not Active'
-  if (avg === Infinity) return 'Pending'
-  if (avg < 400) return 'Perfect'
-  if (avg < 1000) return 'Normal'
-  if (avg < 3000) return 'Slow'
-  if (avg < 5000) return 'Very Slow'
-  if (avg < 10000) return 'Unstable'
-  return 'Unstable'
-}
-
-// 📖 Calculate uptime percentage (successful pings / total pings)
-// 📖 Only count code 200 responses
-const getUptime = (r) => {
-  if (r.pings.length === 0) return 0
-  const successful = r.pings.filter(p => p.code === '200').length
-  return Math.round((successful / r.pings.length) * 100)
-}
-
-// 📖 Sort results using the same logic as renderTable - used for both display and selection
-const sortResults = (results, sortColumn, sortDirection) => {
-  return [...results].sort((a, b) => {
-    let cmp = 0
-
-    switch (sortColumn) {
-      case 'rank':
-        cmp = a.idx - b.idx
-        break
-      case 'tier':
-        cmp = TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier)
-        break
-      case 'origin':
-        cmp = 'NVIDIA NIM'.localeCompare('NVIDIA NIM') // All same for now
-        break
-      case 'model':
-        cmp = a.label.localeCompare(b.label)
-        break
-      case 'ping': {
-        const aLast = a.pings.length > 0 ? a.pings[a.pings.length - 1] : null
-        const bLast = b.pings.length > 0 ? b.pings[b.pings.length - 1] : null
-        const aPing = aLast?.code === '200' ? aLast.ms : Infinity
-        const bPing = bLast?.code === '200' ? bLast.ms : Infinity
-        cmp = aPing - bPing
-        break
-      }
-      case 'avg':
-        cmp = getAvg(a) - getAvg(b)
-        break
-      case 'status':
-        cmp = a.status.localeCompare(b.status)
-        break
-      case 'verdict': {
-        const aVerdict = getVerdict(a)
-        const bVerdict = getVerdict(b)
-        cmp = VERDICT_ORDER.indexOf(aVerdict) - VERDICT_ORDER.indexOf(bVerdict)
-        break
-      }
-      case 'uptime':
-        cmp = getUptime(a) - getUptime(b)
-        break
-    }
-
-    return sortDirection === 'asc' ? cmp : -cmp
-  })
-}
+// 📖 Core logic functions (getAvg, getVerdict, getUptime, sortResults, etc.)
+// 📖 are imported from lib/utils.js for testability
 
 // 📖 renderTable: mode param controls footer hint text (opencode vs openclaw)
 function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode') {
@@ -884,27 +803,7 @@ async function startOpenClaw(model, apiKey) {
 }
 
 // ─── Helper function to find best model after analysis ────────────────────────
-function findBestModel(results) {
-  // 📖 Sort by avg ping (fastest first), then by uptime percentage (most reliable)
-  const sorted = [...results].sort((a, b) => {
-    const avgA = getAvg(a)
-    const avgB = getAvg(b)
-    const uptimeA = getUptime(a)
-    const uptimeB = getUptime(b)
-
-    // 📖 Priority 1: Models that are up (status === 'up')
-    if (a.status === 'up' && b.status !== 'up') return -1
-    if (a.status !== 'up' && b.status === 'up') return 1
-
-    // 📖 Priority 2: Fastest average ping
-    if (avgA !== avgB) return avgA - avgB
-
-    // 📖 Priority 3: Highest uptime percentage
-    return uptimeB - uptimeA
-  })
-
-  return sorted.length > 0 ? sorted[0] : null
-}
+// 📖 findBestModel is imported from lib/utils.js
 
 // ─── Function to run in fiable mode (10-second analysis then output best model) ──
 async function runFiableMode(apiKey) {
@@ -963,62 +862,26 @@ async function runFiableMode(apiKey) {
   process.exit(0)
 }
 
-// ─── Tier filter helper ────────────────────────────────────────────────────────
-// 📖 Maps a single tier letter (S, A, B, C) to the full set of matching tier strings.
-// 📖 --tier S → includes S+ and S
-// 📖 --tier A → includes A+, A, A-
-// 📖 --tier B → includes B+, B
-// 📖 --tier C → includes C only
-const TIER_LETTER_MAP = {
-  'S': ['S+', 'S'],
-  'A': ['A+', 'A', 'A-'],
-  'B': ['B+', 'B'],
-  'C': ['C'],
-}
-
-function filterByTier(results, tierLetter) {
-  const letter = tierLetter.toUpperCase()
-  const allowed = TIER_LETTER_MAP[letter]
-  if (!allowed) {
+// 📖 filterByTier and TIER_LETTER_MAP are imported from lib/utils.js
+// 📖 Wrapper that exits on invalid tier (utils version returns null instead)
+function filterByTierOrExit(results, tierLetter) {
+  const filtered = filterByTier(results, tierLetter)
+  if (filtered === null) {
     console.error(chalk.red(`  ✖ Unknown tier "${tierLetter}". Valid tiers: S, A, B, C`))
     process.exit(1)
   }
-  return results.filter(r => allowed.includes(r.tier))
+  return filtered
 }
 
 async function main() {
-  // 📖 Parse CLI arguments properly
-  const args = process.argv.slice(2)
-
-  // 📖 Extract API key (first non-flag argument) and flags
-  let apiKey = null
-  const flags = []
-
-  for (const arg of args) {
-    if (arg.startsWith('--')) {
-      flags.push(arg.toLowerCase())
-    } else if (!apiKey) {
-      apiKey = arg
-    }
-  }
+  // 📖 Parse CLI arguments using shared parseArgs utility
+  const parsed = parseArgs(process.argv)
+  let apiKey = parsed.apiKey
+  const { bestMode, fiableMode, openCodeMode, openClawMode, tierFilter } = parsed
 
   // 📖 Priority: CLI arg > env var > saved config > wizard
   if (!apiKey) {
     apiKey = process.env.NVIDIA_API_KEY || loadApiKey()
-  }
-
-  // 📖 Check for CLI flags
-  const bestMode    = flags.includes('--best')
-  const fiableMode  = flags.includes('--fiable')
-  const openCodeMode  = flags.includes('--opencode')
-  const openClawMode  = flags.includes('--openclaw')
-
-  // 📖 Parse --tier X flag (e.g. --tier S, --tier A)
-  // 📖 Find "--tier" in flags array, then get the next raw arg as the tier value
-  let tierFilter = null
-  const tierIdx = args.findIndex(a => a.toLowerCase() === '--tier')
-  if (tierIdx !== -1 && args[tierIdx + 1] && !args[tierIdx + 1].startsWith('--')) {
-    tierFilter = args[tierIdx + 1].toUpperCase()
   }
 
   if (!apiKey) {
@@ -1079,7 +942,7 @@ async function main() {
 
   // 📖 Apply tier letter filter if --tier X was given
   if (tierFilter) {
-    results = filterByTier(results, tierFilter)
+    results = filterByTierOrExit(results, tierFilter)
   }
 
   // 📖 Add interactive selection state - cursor index and user's choice
