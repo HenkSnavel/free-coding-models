@@ -4,12 +4,12 @@
  *
  * @details
  *   This file contains all model definitions organized by provider/source.
- *   Each source has its own models array with [model_id, display_label, tier, swe_score, ctw].
+ *   Each source has its own models array with [model_id, display_label, tier, swe_score, ctx].
  *   - model_id: The model identifier for API calls
  *   - display_label: Human-friendly name for display
  *   - tier: Performance tier (S+, S, A+, A, A-, B+, B, C)
  *   - swe_score: SWE-bench Verified score percentage
- *   - ctw: Context window size in tokens (e.g., "128k", "32k")
+ *   - ctx: Context window size in tokens (e.g., "128k", "32k")
  *   
  *   Add new sources here to support additional providers beyond NIM.
  *
@@ -95,7 +95,7 @@ export const sources = {
 // 📖 Flatten all models from all sources for backward compatibility
 export const MODELS = []
 for (const [sourceKey, sourceData] of Object.entries(sources)) {
-  for (const [modelId, label, tier, sweScore, ctw] of sourceData.models) {
-    MODELS.push([modelId, label, tier, sweScore, ctw])
+  for (const [modelId, label, tier, sweScore, ctx] of sourceData.models) {
+    MODELS.push([modelId, label, tier, sweScore, ctx])
   }
 }

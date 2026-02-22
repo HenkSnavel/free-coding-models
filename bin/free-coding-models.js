@@ -421,7 +421,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   // 📖 Column widths (generous spacing with margins)
   const W_RANK = 6
   const W_TIER = 6
-  const W_CTW = 6
+  const W_CTX = 6
   const W_SOURCE = 14
   const W_MODEL = 26
   const W_SWE = 9
@@ -454,7 +454,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const originH  = 'Origin'
   const modelH   = 'Model'
   const sweH     = sortColumn === 'swe' ? dir + ' SWE%' : 'SWE%'
-  const ctwH     = sortColumn === 'ctw' ? dir + ' CTW' : 'CTW'
+  const ctxH     = sortColumn === 'ctx' ? dir + ' CTX' : 'CTX'
   const pingH    = sortColumn === 'ping' ? dir + ' Latest Ping' : 'Latest Ping'
   const avgH     = sortColumn === 'avg' ? dir + ' Avg Ping' : 'Avg Ping'
   const healthH  = sortColumn === 'condition' ? dir + ' Health' : 'Health'
@@ -477,15 +477,15 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const originH_c  = sortColumn === 'origin' ? chalk.bold.cyan(originH.padEnd(W_SOURCE)) : colorFirst(originH, W_SOURCE)
   const modelH_c   = colorFirst(modelH, W_MODEL)
   const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst(sweH, W_SWE)
-  const ctwH_c     = sortColumn === 'ctw' ? chalk.bold.cyan(ctwH.padEnd(W_CTW)) : colorFirst(ctwH, W_CTW)
+  const ctxH_c     = sortColumn === 'ctx' ? chalk.bold.cyan(ctxH.padEnd(W_CTX)) : colorFirst(ctxH, W_CTX)
   const pingH_c    = sortColumn === 'ping' ? chalk.bold.cyan(pingH.padEnd(W_PING)) : colorFirst('Latest Ping', W_PING)
   const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : colorFirst('Avg Ping', W_AVG)
   const healthH_c  = sortColumn === 'condition' ? chalk.bold.cyan(healthH.padEnd(W_STATUS)) : colorFirst('Health', W_STATUS)
   const verdictH_c = sortColumn === 'verdict' ? chalk.bold.cyan(verdictH.padEnd(W_VERDICT)) : colorFirst(verdictH, W_VERDICT)
   const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
 
-  // 📖 Header with proper spacing (column order: Rank, Tier, SWE%, CTW, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
-  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sweH_c + '  ' + ctwH_c + '  ' + modelH_c + '  ' + originH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
+  // 📖 Header with proper spacing (column order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
+  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sweH_c + '  ' + ctxH_c + '  ' + modelH_c + '  ' + originH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
 
   // 📖 Separator line
   lines.push(
@@ -493,7 +493,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('─'.repeat(W_RANK)) + '  ' +
     chalk.dim('─'.repeat(W_TIER)) + '  ' +
     chalk.dim('─'.repeat(W_SWE)) + '  ' +
-    chalk.dim('─'.repeat(W_CTW)) + '  ' +
+    chalk.dim('─'.repeat(W_CTX)) + '  ' +
     '─'.repeat(W_MODEL) + '  ' +
     '─'.repeat(W_SOURCE) + '  ' +
     chalk.dim('─'.repeat(W_PING)) + '  ' +
@@ -529,12 +529,12 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       : chalk.dim(sweScore.padEnd(W_SWE))
     
     // 📖 Context window column - colorized by size (larger = better)
-    const ctwRaw = r.ctw ?? '—'
-    const ctwCell = ctwRaw !== '—' && (ctwRaw.includes('128k') || ctwRaw.includes('200k') || ctwRaw.includes('1m'))
-      ? chalk.greenBright(ctwRaw.padEnd(W_CTW))
-      : ctwRaw !== '—' && (ctwRaw.includes('32k') || ctwRaw.includes('64k'))
-      ? chalk.cyan(ctwRaw.padEnd(W_CTW))
-      : chalk.dim(ctwRaw.padEnd(W_CTW))
+    const ctxRaw = r.ctx ?? '—'
+    const ctxCell = ctxRaw !== '—' && (ctxRaw.includes('128k') || ctxRaw.includes('200k') || ctxRaw.includes('1m'))
+      ? chalk.greenBright(ctxRaw.padEnd(W_CTX))
+      : ctxRaw !== '—' && (ctxRaw.includes('32k') || ctxRaw.includes('64k'))
+      ? chalk.cyan(ctxRaw.padEnd(W_CTX))
+      : chalk.dim(ctxRaw.padEnd(W_CTX))
 
     // 📖 Latest ping - pings are objects: { ms, code }
     // 📖 Only show response time for successful pings, "—" for errors (error code is in Status column)
@@ -640,8 +640,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       uptimeCell = chalk.red(uptimeStr.padStart(W_UPTIME))
     }
 
-    // 📖 Build row with double space between columns (order: Rank, Tier, SWE%, CTW, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
-    const row = '  ' + num + '  ' + tier + '  ' + sweCell + '  ' + ctwCell + '  ' + name + '  ' + source + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
+    // 📖 Build row with double space between columns (order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
+    const row = '  ' + num + '  ' + tier + '  ' + sweCell + '  ' + ctxCell + '  ' + name + '  ' + source + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
 
     if (isCursor) {
       lines.push(chalk.bgRgb(139, 0, 139)(row))
@@ -1105,8 +1105,8 @@ async function runFiableMode(apiKey) {
   console.log(chalk.cyan('  ⚡ Analyzing models for reliability (10 seconds)...'))
   console.log()
 
-  let results = MODELS.map(([modelId, label, tier, sweScore, ctw], i) => ({
-    idx: i + 1, modelId, label, tier, sweScore, ctw,
+  let results = MODELS.map(([modelId, label, tier, sweScore, ctx], i) => ({
+    idx: i + 1, modelId, label, tier, sweScore, ctx,
     status: 'pending',
     pings: [],
     httpCode: null,
@@ -1183,21 +1183,47 @@ async function main() {
     }
   }
 
-  // 📖 Skip update check during development to avoid blocking menus
-  // 📖 In production, this will work correctly when versions are published
-  const latestVersion = null // Skip update check for now
+  // 📖 Check for updates in the background
+  let latestVersion = null
+  try {
+    latestVersion = await checkForUpdate()
+  } catch {
+    // Silently fail - don't block the app if npm registry is unreachable
+  }
 
   // 📖 Default mode: OpenCode CLI
   let mode = 'opencode'
 
-  // 📖 AUTO-UPDATE: Disabled during development
-  // 📖 Will be re-enabled when versions are properly published
-
-  // 📖 This section is now handled by the update notification menu above
+  // 📖 Show update notification menu if a new version is available
+  if (latestVersion) {
+    const action = await promptUpdateNotification(latestVersion)
+    if (action === 'update') {
+      runUpdate(latestVersion)
+      return // runUpdate will restart the process
+    } else if (action === 'changelogs') {
+      console.log()
+      console.log(chalk.cyan('  Opening changelog in browser...'))
+      console.log()
+      const { execSync } = require('child_process')
+      const changelogUrl = 'https://github.com/vava-nessa/free-coding-models/releases'
+      try {
+        if (isMac) {
+          execSync(`open "${changelogUrl}"`, { stdio: 'ignore' })
+        } else if (isWindows) {
+          execSync(`start "" "${changelogUrl}"`, { stdio: 'ignore' })
+        } else {
+          execSync(`xdg-open "${changelogUrl}"`, { stdio: 'ignore' })
+        }
+      } catch {
+        console.log(chalk.dim(`  Could not open browser. Visit: ${changelogUrl}`))
+      }
+    }
+    // If action is null (Continue without update) or changelogs, proceed to main app
+  }
 
   // 📖 Create results array with all models initially visible
-  let results = MODELS.map(([modelId, label, tier, sweScore, ctw], i) => ({
-    idx: i + 1, modelId, label, tier, sweScore, ctw,
+  let results = MODELS.map(([modelId, label, tier, sweScore, ctx], i) => ({
+    idx: i + 1, modelId, label, tier, sweScore, ctx,
     status: 'pending',
     pings: [],  // 📖 All ping results (ms or 'TIMEOUT')
     httpCode: null,
@@ -1306,10 +1332,10 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
 
-    // 📖 Sorting keys: R=rank, T=tier, O=origin, M=model, L=latest ping, A=avg ping, S=SWE-bench, C=context window, H=health, V=verdict, U=uptime
+    // 📖 Sorting keys: R=rank, T=tier, O=origin, M=model, L=latest ping, A=avg ping, S=SWE-bench, N=context, H=health, V=verdict, U=uptime
     const sortKeys = {
       'r': 'rank', 't': 'tier', 'o': 'origin', 'm': 'model',
-      'l': 'ping', 'a': 'avg', 's': 'swe', 'c': 'ctw', 'h': 'condition', 'v': 'verdict', 'u': 'uptime'
+      'l': 'ping', 'a': 'avg', 's': 'swe', 'n': 'ctx', 'h': 'condition', 'v': 'verdict', 'u': 'uptime'
     }
 
     if (sortKeys[key.name]) {
