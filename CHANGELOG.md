@@ -2,6 +2,13 @@
 
 ---
 
+## 0.1.22 — 2026-02-22
+
+### Changed
+- **Local changelogs**: "Read Changelogs" menu option now opens local `CHANGELOG.md` file instead of GitHub releases
+
+---
+
 ## 0.1.21 — 2026-02-22
 
 ### Refactored

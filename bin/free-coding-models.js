@@ -201,7 +201,7 @@ async function promptModeSelection(latestVersion) {
     options.push({
       label: 'Read Changelogs',
       icon: '📋',
-      description: 'Open the GitHub releases page in your browser',
+      description: 'Open local CHANGELOG.md file',
     })
   }
 
@@ -1044,11 +1044,12 @@ async function main() {
     runUpdate(latestVersion)
   }
 
-  // 📖 Handle "Read Changelogs" selection — open GitHub releases in browser
+  // 📖 Handle "Read Changelogs" selection — open local CHANGELOG.md file
   if (mode === 'changelogs') {
     const { exec } = await import('child_process')
-    exec('open https://github.com/vava-nessa/free-coding-models/releases')
-    console.log(chalk.dim('  📋 Opening changelogs in browser…'))
+    const changelogPath = join(process.cwd(), 'CHANGELOG.md')
+    exec(`open "${changelogPath}"`)
+    console.log(chalk.dim('  📋 Opening local changelogs file…'))
     process.exit(0)
   }
 
