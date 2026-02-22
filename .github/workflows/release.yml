@@ -1,12 +1,14 @@
-# 📖 Release workflow — publishes to npm and creates a GitHub Release.
+# 📖 Release workflow — publishes to npm, creates a GitHub Release, and notifies Discord.
 #
 # Triggered on every push to main. Compares the version in package.json
-# against existing git tags — if no tag exists for that version, it publishes
-# to npm and creates a GitHub Release with auto-generated notes.
+# against existing git tags — if no tag exists for that version, it:
+#   1. Publishes to npm
+#   2. Creates a GitHub Release with changelog extracted from CHANGELOG.md
+#   3. Posts a rich embed to Discord with the release notes
 #
-# 📖 Requires NPM_TOKEN secret:
-#    Settings → Secrets and variables → Actions → New repository secret
-#    Name: NPM_TOKEN — Value: your npm access token (npmjs.com → Access Tokens)
+# 📖 Required secrets (Settings → Secrets and variables → Actions):
+#   - NPM_TOKEN          : npm access token (npmjs.com → Access Tokens → Automation type)
+#   - DISCORD_WEBHOOK_URL: Discord channel webhook URL (Channel settings → Integrations → Webhooks)
 
 name: Release
 
@@ -24,7 +26,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 📖 Extract version from package.json and check if this version was already released
+      # 📖 Read version from package.json and bail early if this version already has a tag.
+      # 📖 This prevents re-releasing when pushing non-version commits to main.
       - name: Check if release needed
         id: check
         run: |
@@ -54,36 +57,156 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # 📖 Create a git tag and GitHub Release for this version
+      # 📖 Extract the changelog section for this version using Node.js.
+      # 📖 More reliable than awk: handles dots in version numbers, date suffixes
+      # 📖 (e.g. "## 0.1.41 — 2026-02-22"), and multi-line markdown content.
+      # 📖 Writes the extracted notes to release_notes.md for the next step.
+      - name: Extract changelog
+        if: steps.check.outputs.skip == 'false'
+        id: changelog
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          node - <<'EOF'
+          const fs   = require('fs')
+          const ver  = process.env.VERSION
+
+          let notes = ''
+          if (fs.existsSync('CHANGELOG.md')) {
+            const text    = fs.readFileSync('CHANGELOG.md', 'utf8')
+            const lines   = text.split('\n')
+            let capturing = false
+            const buf     = []
+
+            for (const line of lines) {
+              // 📖 Start capturing when we hit the header for our version.
+              // 📖 The header may have a date suffix: "## 0.1.44" or "## 0.1.44 — 2026-02-22"
+              if (!capturing && line.startsWith('## ') && line.includes(ver)) {
+                capturing = true
+                continue   // skip the header line itself
+              }
+              // 📖 Stop when we hit the next version header (or end of file)
+              if (capturing && line.startsWith('## ') && /^## \d+\./.test(line)) {
+                break
+              }
+              if (capturing) buf.push(line)
+            }
+
+            // 📖 Trim leading/trailing blank lines
+            notes = buf.join('\n').trim()
+          }
+
+          if (notes) {
+            console.log('📝 Changelog section found, length:', notes.length)
+            fs.writeFileSync('release_notes.md', notes)
+            // 📖 Also expose a short version for the Discord embed (max 3800 chars)
+            const short = notes.length > 3800 ? notes.slice(0, 3800) + '\n\n…_(see full release for more)_' : notes
+            fs.writeFileSync('release_notes_short.md', short)
+            process.stdout.write('has_notes=true\n')
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'has_notes=true\n')
+          } else {
+            console.log('⚠️ No changelog section found for version', ver)
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'has_notes=false\n')
+          }
+          EOF
+
+      # 📖 Create the GitHub Release with the extracted notes (or auto-generated if none found)
       - name: Create GitHub Release
         if: steps.check.outputs.skip == 'false'
+        id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.check.outputs.version }}
+          HAS_NOTES: ${{ steps.changelog.outputs.has_notes }}
         run: |
           git tag "v$VERSION"
           git push origin "v$VERSION"
-          
-          # 📖 Extract release notes from CHANGELOG.md
-          if [ -f "CHANGELOG.md" ]; then
-            # Find the section for the current version
-            RELEASE_NOTES=$(awk '/^## '$VERSION'/{flag=1; next} /^## [0-9]+\./{flag=0} flag' CHANGELOG.md | sed '/^$/d')
-            
-            if [ -n "$RELEASE_NOTES" ]; then
-              echo "📝 Using release notes from CHANGELOG.md"
-              echo "$RELEASE_NOTES" > release_notes.md
-              gh release create "v$VERSION" \
-                --title "v$VERSION" \
-                --notes-file release_notes.md
-            else
-              echo "⚠️ No release notes found for $VERSION in CHANGELOG.md — using auto-generated notes"
-              gh release create "v$VERSION" \
-                --title "v$VERSION" \
-                --generate-notes
-            fi
+
+          if [ "$HAS_NOTES" = "true" ]; then
+            echo "📝 Creating release with CHANGELOG notes"
+            gh release create "v$VERSION" \
+              --title "v$VERSION" \
+              --notes-file release_notes.md
           else
-            echo "⚠️ CHANGELOG.md not found — using auto-generated notes"
+            echo "⚠️ No notes found — using auto-generated release notes"
             gh release create "v$VERSION" \
               --title "v$VERSION" \
               --generate-notes
           fi
+
+          # 📖 Get the release URL for the Discord embed
+          RELEASE_URL=$(gh release view "v$VERSION" --json url -q .url)
+          echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+
+      # 📖 Post a rich embed to Discord with version, changelog excerpt, and a link to the release.
+      # 📖 Uses the DISCORD_WEBHOOK_URL secret — set it in Settings → Secrets → Actions.
+      # 📖 The embed color 0x76b900 is NVIDIA green (matches the project branding).
+      # 📖 If DISCORD_WEBHOOK_URL is not set, this step is silently skipped.
+      - name: Notify Discord
+        if: steps.check.outputs.skip == 'false' && secrets.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          VERSION: ${{ steps.check.outputs.version }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          HAS_NOTES: ${{ steps.changelog.outputs.has_notes }}
+        run: |
+          node - <<'EOF'
+          const https   = require('https')
+          const fs      = require('fs')
+          const url     = process.env.DISCORD_WEBHOOK_URL
+          const version = process.env.VERSION
+          const releaseUrl = process.env.RELEASE_URL ||
+            `https://github.com/vava-nessa/free-coding-models/releases/tag/v${version}`
+
+          // 📖 Read the short changelog text (already truncated to 3800 chars)
+          let changelogText = ''
+          if (fs.existsSync('release_notes_short.md')) {
+            changelogText = fs.readFileSync('release_notes_short.md', 'utf8').trim()
+          }
+
+          // 📖 Build the Discord embed payload
+          const embed = {
+            title: `⚡ free-coding-models v${version} released!`,
+            url: releaseUrl,
+            color: 0x76b900,   // 📖 NVIDIA green
+            description: changelogText || '_No changelog details available._',
+            fields: [
+              {
+                name: '📦 Install / Update',
+                value: `\`\`\`bash\nnpm i -g free-coding-models@${version}\n\`\`\``,
+                inline: false,
+              },
+            ],
+            footer: {
+              text: 'free-coding-models • npm publish',
+            },
+            timestamp: new Date().toISOString(),
+          }
+
+          const body = JSON.stringify({ embeds: [embed] })
+
+          const urlObj = new URL(url)
+          const req = https.request(
+            {
+              hostname: urlObj.hostname,
+              path: urlObj.pathname + urlObj.search,
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+              },
+            },
+            (res) => {
+              console.log('Discord response status:', res.statusCode)
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                console.log('✅ Discord notification sent')
+              } else {
+                console.error('❌ Discord notification failed:', res.statusCode)
+                process.exit(1)
+              }
+            }
+          )
+          req.on('error', (e) => { console.error('❌ Request error:', e); process.exit(1) })
+          req.write(body)
+          req.end()
+          EOF
