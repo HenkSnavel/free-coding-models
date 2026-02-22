@@ -14,6 +14,25 @@ After completing any feature or fix, the agent MUST:
 
 This ensures the codebase remains in a working state at all times.
 
+## Release Process (MANDATORY)
+
+When releasing a new version, follow this exact process:
+
+1. **Version Bump**: Update version in `package.json` (e.g., `0.1.16` → `0.1.17`)
+2. **Commit ALL Changed Files**: `git add . && git commit -m "0.1.17"`
+   - Always commit with just the version number as the message (e.g., "0.1.17")
+   - Include ALL modified files in the commit (bin/, lib/, test/, README.md, CHANGELOG.md, etc.)
+3. **Push**: `git push origin main` — GitHub Actions will auto-publish to npm
+4. **Wait for npm Publish**:
+   ```bash
+   for i in $(seq 1 30); do sleep 10; v=$(npm view free-coding-models version 2>/dev/null); echo "Attempt $i: npm version = $v"; if [ "$v" = "0.1.17" ]; then echo "✅ published!"; break; fi; done
+   ```
+5. **Install and Verify**: `npm install -g free-coding-models@0.1.17`
+6. **Test Binary**: `free-coding-models --help` (or any other command to verify it works)
+7. **Only when the global npm-installed version works → the release is confirmed**
+
+**Why:** A local `npm install -g .` can mask issues because it symlinks the repo. The real npm package is a tarball built from the `files` field — only a real npm install will catch missing files.
+
 ## Real-World npm Verification (MANDATORY for every fix/feature)
 
 **Never trust local-only testing.** `pnpm start` runs from the repo and won't catch missing files in the published package. Always run the full npm verification:
