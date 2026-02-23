@@ -574,7 +574,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       : chalk.dim(ctxRaw.padEnd(W_CTX))
 
     // 📖 Latest ping - pings are objects: { ms, code }
-    // 📖 Only show response time for successful pings, "—" for errors (error code is in Status column)
+    // 📖 Show response time for 200 (success) and 401 (no-auth but server is reachable)
     const latestPing = r.pings.length > 0 ? r.pings[r.pings.length - 1] : null
     let pingCell
     if (!latestPing) {
@@ -583,6 +583,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       // 📖 Success - show response time
       const str = String(latestPing.ms).padEnd(W_PING)
       pingCell = latestPing.ms < 500 ? chalk.greenBright(str) : latestPing.ms < 1500 ? chalk.yellow(str) : chalk.red(str)
+    } else if (latestPing.code === '401') {
+      // 📖 401 = no API key but server IS reachable — still show latency in dim
+      pingCell = chalk.dim(String(latestPing.ms).padEnd(W_PING))
     } else {
       // 📖 Error or timeout - show "—" (error code is already in Status column)
       pingCell = chalk.dim('—'.padEnd(W_PING))
@@ -601,7 +604,11 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Status column - build plain text with emoji, pad, then colorize
     // 📖 Different emojis for different error codes
     let statusText, statusColor
-    if (r.status === 'pending') {
+    if (r.status === 'noauth') {
+      // 📖 Server responded but needs an API key — shown dimly since it IS reachable
+      statusText = `🔑 NO KEY`
+      statusColor = (s) => chalk.dim(s)
+    } else if (r.status === 'pending') {
       statusText = `${FRAMES[frame % FRAMES.length]} wait`
       statusColor = (s) => chalk.dim.yellow(s)
     } else if (r.status === 'up') {
@@ -718,14 +725,19 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 
 // 📖 ping: Send a single chat completion request to measure model availability and latency.
 // 📖 url param is the provider's endpoint URL — differs per provider (NIM, Groq, Cerebras).
+// 📖 apiKey can be null — in that case no Authorization header is sent.
+// 📖 A 401 response still tells us the server is UP and gives us real latency.
 async function ping(apiKey, modelId, url) {
   const ctrl  = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT)
   const t0    = performance.now()
   try {
+    // 📖 Only attach Authorization header when a key is available
+    const headers = { 'Content-Type': 'application/json' }
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
     const resp = await fetch(url, {
       method: 'POST', signal: ctrl.signal,
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
     })
     return { code: String(resp.status), ms: Math.round(performance.now() - t0) }
@@ -1524,6 +1536,16 @@ async function main() {
         results.forEach((r, i) => { r.idx = i + 1 })
         state.results = results
         adjustScrollOffset(state)
+        // 📖 Re-ping all models that were 'noauth' (got 401 without key) but now have a key
+        // 📖 This makes the TUI react immediately when a user adds an API key in settings
+        state.results.forEach(r => {
+          if (r.status === 'noauth' && getApiKey(state.config, r.providerKey)) {
+            r.status = 'pending'
+            r.pings = []
+            r.httpCode = null
+            pingModel(r).catch(() => {})
+          }
+        })
         return
       }
 
@@ -1707,8 +1729,9 @@ async function main() {
 
   // 📖 Single ping function that updates result
   // 📖 Uses per-provider API key and URL from sources.js
+  // 📖 If no API key is configured, pings without auth — a 401 still tells us latency + server is up
   const pingModel = async (r) => {
-    const providerApiKey = getApiKey(state.config, r.providerKey) ?? apiKey
+    const providerApiKey = getApiKey(state.config, r.providerKey) ?? null
     const providerUrl = sources[r.providerKey]?.url ?? sources.nvidia.url
     const { code, ms } = await ping(providerApiKey, r.modelId, providerUrl)
 
@@ -1722,6 +1745,11 @@ async function main() {
       r.status = 'up'
     } else if (code === '000') {
       r.status = 'timeout'
+    } else if (code === '401') {
+      // 📖 401 = server is reachable but no API key set (or wrong key)
+      // 📖 Treated as 'noauth' — server is UP, latency is real, just needs a key
+      r.status = 'noauth'
+      r.httpCode = code
     } else {
       r.status = 'down'
       r.httpCode = code

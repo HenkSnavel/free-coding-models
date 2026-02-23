@@ -2,6 +2,17 @@
 
 ---
 
+## 0.1.49
+
+### Fixed
+- **Cerebras / Groq without API key**: models were being pinged with the fallback NVIDIA key, causing misleading `❌ 401` — now pings without auth header; 401 is treated as `🔑 NO KEY` (server reachable, latency shown dimly)
+- **Settings: entering an API key had no immediate effect**: after saving a key and closing Settings (Escape), models previously in `noauth` state are now immediately re-pinged with the new key
+
+### Changed
+- Ping without API key is now always attempted — a 401 response confirms the server is UP and shows real latency; `🔑 NO KEY` replaces the old `❌ 401` misleading error
+
+---
+
 ## 0.1.48
 
 ### Fixed

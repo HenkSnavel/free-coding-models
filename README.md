@@ -61,7 +61,8 @@
 - **💻 OpenCode integration** — Auto-detects NIM setup, sets model as default, launches OpenCode
 - **🦞 OpenClaw integration** — Sets selected model as default provider in `~/.openclaw/openclaw.json`
 - **🎨 Clean output** — Zero scrollback pollution, interface stays open until Ctrl+C
-- **📶 Status indicators** — UP ✅ · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
+- **📶 Status indicators** — UP ✅ · No Key 🔑 · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
+- **🔍 Keyless latency** — Models are pinged even without an API key — a `🔑 NO KEY` status confirms the server is reachable with real latency shown, so you can compare providers before committing to a key
 - **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
 
 ---
@@ -78,7 +79,7 @@ Before using `free-coding-models`, make sure you have:
 3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
 4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** You don't need all three providers. One key is enough to get started. Add more later via the Settings screen (`P` key).
+> 💡 **Tip:** You don't need all three providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
 
 ---
 
