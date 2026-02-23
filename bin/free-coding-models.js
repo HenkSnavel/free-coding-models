@@ -1243,8 +1243,13 @@ async function startOpenClaw(model, apiKey) {
     config.models.providers.nvidia = {
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       api: 'openai-completions',
+      models: [],
     }
     console.log(chalk.dim('  ➕ Added nvidia provider block to OpenClaw config (models.providers.nvidia)'))
+  }
+  // 📖 Ensure models array exists even if the provider block was created by an older version
+  if (!Array.isArray(config.models.providers.nvidia.models)) {
+    config.models.providers.nvidia.models = []
   }
 
   // 📖 Store API key in the root "env" section so OpenClaw can read it as NVIDIA_API_KEY env var.
