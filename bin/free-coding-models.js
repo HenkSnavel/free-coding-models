@@ -710,6 +710,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  W↓/X↑ Interval (${intervalSec}s)  •  T Filter tier  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(chalk.dim('  Made with ') + '💖 & ☕' + chalk.dim(' by ') + '\x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\' + chalk.dim('  •  ') + '🫂 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Join our Discord!\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Read the docs on GitHub\x1b]8;;\x1b\\')
+  lines.push(chalk.dim('  💬 Discord: ') + chalk.cyanBright('https://discord.gg/5MbTnDC3Md'))
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
