@@ -810,88 +810,87 @@ function checkNvidiaNimConfig() {
 }
 
 // ─── Start OpenCode ────────────────────────────────────────────────────────────
-// 📖 Launches OpenCode with the selected NVIDIA NIM model
-// 📖 If NVIDIA NIM is configured, use --model flag, otherwise show install prompt
-// 📖 Model format: { modelId, label, tier }
+// 📖 Launches OpenCode with the selected model.
+// 📖 Handles all 3 providers: nvidia (needs custom provider config), groq & cerebras (built-in in OpenCode).
+// 📖 For nvidia: checks if NIM is configured, sets provider.models entry, spawns with nvidia/model-id.
+// 📖 For groq/cerebras: OpenCode has built-in support — just sets model in config and spawns.
+// 📖 Model format: { modelId, label, tier, providerKey }
 async function startOpenCode(model) {
-  const hasNim = checkNvidiaNimConfig()
+  const providerKey = model.providerKey ?? 'nvidia'
+  // 📖 Full model reference string used in OpenCode config and --model flag
+  const modelRef = `${providerKey}/${model.modelId}`
 
-  if (hasNim) {
-    // 📖 NVIDIA NIM already configured - launch with model flag
-    console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
-    console.log(chalk.dim(`  Model: nvidia/${model.modelId}`))
-    console.log()
+  if (providerKey === 'nvidia') {
+    // 📖 NVIDIA NIM needs a custom provider block in OpenCode config (not built-in)
+    const hasNim = checkNvidiaNimConfig()
 
-    const config = loadOpenCodeConfig()
-    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
+    if (hasNim) {
+      console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
+      console.log(chalk.dim(`  Model: ${modelRef}`))
+      console.log()
 
-    // 📖 Backup current config
-    if (existsSync(getOpenCodeConfigPath())) {
-      copyFileSync(getOpenCodeConfigPath(), backupPath)
-      console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
-    }
+      const config = loadOpenCodeConfig()
+      const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
 
-    // 📖 Update default model to nvidia/model_id
-    config.model = `nvidia/${model.modelId}`
-
-    // 📖 Register the model in the nvidia provider's models section
-    // 📖 OpenCode requires models to be explicitly listed in provider.models
-    // 📖 to recognize them — without this, it falls back to the previous default
-    if (config.provider?.nvidia) {
-      if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
-      config.provider.nvidia.models[model.modelId] = {
-        name: model.label,
+      if (existsSync(getOpenCodeConfigPath())) {
+        copyFileSync(getOpenCodeConfigPath(), backupPath)
+        console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
       }
-    }
 
-    saveOpenCodeConfig(config)
+      config.model = modelRef
 
-    // 📖 Verify config was saved correctly
-    const savedConfig = loadOpenCodeConfig()
-    console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-    console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
-    console.log()
-    
-    if (savedConfig.model === config.model) {
-      console.log(chalk.green(`  ✓ Default model set to: nvidia/${model.modelId}`))
-    } else {
-      console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
-    }
-    console.log()
-    console.log(chalk.dim('  Starting OpenCode…'))
-    console.log()
+      // 📖 Register the model in the nvidia provider's models section
+      // 📖 OpenCode requires models to be explicitly listed in provider.models
+      // 📖 to recognize them — without this, it falls back to the previous default
+      if (config.provider?.nvidia) {
+        if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
+        config.provider.nvidia.models[model.modelId] = { name: model.label }
+      }
 
-    // 📖 Launch OpenCode and wait for it
-    // 📖 Use --model flag to ensure the model is selected
-    const { spawn } = await import('child_process')
-    const child = spawn('opencode', ['--model', `nvidia/${model.modelId}`], {
-      stdio: 'inherit',
-      shell: true,
-      detached: false
-    })
+      saveOpenCodeConfig(config)
 
-    // 📖 Wait for OpenCode to exit
-    await new Promise((resolve, reject) => {
-      child.on('exit', resolve)
-      child.on('error', (err) => {
-        if (err.code === 'ENOENT') {
-          console.error(chalk.red('\n  ✗ Could not find "opencode" — is it installed and in your PATH?'))
-          console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
-          resolve(1)
-        } else {
-          reject(err)
-        }
+      const savedConfig = loadOpenCodeConfig()
+      console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
+      console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+      console.log()
+
+      if (savedConfig.model === config.model) {
+        console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+      } else {
+        console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+      }
+      console.log()
+      console.log(chalk.dim('  Starting OpenCode…'))
+      console.log()
+
+      const { spawn } = await import('child_process')
+      const child = spawn('opencode', ['--model', modelRef], {
+        stdio: 'inherit',
+        shell: true,
+        detached: false
       })
-    })
-  } else {
-    // 📖 NVIDIA NIM not configured - show install prompt and launch
-    console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
-    console.log()
-    console.log(chalk.dim('  Starting OpenCode with installation prompt…'))
-    console.log()
 
-    const configPath = getOpenCodeConfigPath()
-    const installPrompt = `Please install NVIDIA NIM provider in OpenCode by adding this to ${configPath}:
+      await new Promise((resolve, reject) => {
+        child.on('exit', resolve)
+        child.on('error', (err) => {
+          if (err.code === 'ENOENT') {
+            console.error(chalk.red('\n  ✗ Could not find "opencode" — is it installed and in your PATH?'))
+            console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
+            resolve(1)
+          } else {
+            reject(err)
+          }
+        })
+      })
+    } else {
+      // 📖 NVIDIA NIM not configured — show install prompt
+      console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
+      console.log()
+      console.log(chalk.dim('  Starting OpenCode with installation prompt…'))
+      console.log()
+
+      const configPath = getOpenCodeConfigPath()
+      const installPrompt = `Please install NVIDIA NIM provider in OpenCode by adding this to ${configPath}:
 
 {
   "provider": {
@@ -908,21 +907,73 @@ async function startOpenCode(model) {
 
 ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_key_here'}
 
-After installation, you can use: opencode --model nvidia/${model.modelId}`
+After installation, you can use: opencode --model ${modelRef}`
 
-    console.log(chalk.cyan(installPrompt))
+      console.log(chalk.cyan(installPrompt))
+      console.log()
+      console.log(chalk.dim('  Starting OpenCode…'))
+      console.log()
+
+      const { spawn } = await import('child_process')
+      const child = spawn('opencode', [], {
+        stdio: 'inherit',
+        shell: true,
+        detached: false
+      })
+
+      await new Promise((resolve, reject) => {
+        child.on('exit', resolve)
+        child.on('error', (err) => {
+          if (err.code === 'ENOENT') {
+            console.error(chalk.red('\n  ✗ Could not find "opencode" — is it installed and in your PATH?'))
+            console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
+            resolve(1)
+          } else {
+            reject(err)
+          }
+        })
+      })
+    }
+  } else {
+    // 📖 Groq and Cerebras are built-in OpenCode providers — no custom provider config needed.
+    // 📖 OpenCode discovers them via GROQ_API_KEY / CEREBRAS_API_KEY env vars automatically.
+    // 📖 Just set the model in config and launch with --model groq/model-id.
+    console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
+    console.log(chalk.dim(`  Model: ${modelRef}`))
+    console.log()
+
+    const config = loadOpenCodeConfig()
+    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
+
+    if (existsSync(getOpenCodeConfigPath())) {
+      copyFileSync(getOpenCodeConfigPath(), backupPath)
+      console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+    }
+
+    config.model = modelRef
+    saveOpenCodeConfig(config)
+
+    const savedConfig = loadOpenCodeConfig()
+    console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
+    console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+    console.log()
+
+    if (savedConfig.model === config.model) {
+      console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+    } else {
+      console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+    }
     console.log()
     console.log(chalk.dim('  Starting OpenCode…'))
     console.log()
 
     const { spawn } = await import('child_process')
-    const child = spawn('opencode', [], {
+    const child = spawn('opencode', ['--model', modelRef], {
       stdio: 'inherit',
       shell: true,
       detached: false
     })
 
-    // 📖 Wait for OpenCode to exit
     await new Promise((resolve, reject) => {
       child.on('exit', resolve)
       child.on('error', (err) => {
@@ -941,67 +992,25 @@ After installation, you can use: opencode --model nvidia/${model.modelId}`
 // ─── Start OpenCode Desktop ─────────────────────────────────────────────────────
 // 📖 startOpenCodeDesktop: Same config logic as startOpenCode, but opens the Desktop app.
 // 📖 OpenCode Desktop shares config at the same location as CLI.
+// 📖 Handles all 3 providers: nvidia (needs custom provider config), groq & cerebras (built-in).
 // 📖 No need to wait for exit — Desktop app stays open independently.
 async function startOpenCodeDesktop(model) {
-  const hasNim = checkNvidiaNimConfig()
+  const providerKey = model.providerKey ?? 'nvidia'
+  // 📖 Full model reference string used in OpenCode config and --model flag
+  const modelRef = `${providerKey}/${model.modelId}`
 
-  if (hasNim) {
-    console.log(chalk.green(`  🖥 Setting ${chalk.bold(model.label)} as default for OpenCode Desktop…`))
-    console.log(chalk.dim(`  Model: nvidia/${model.modelId}`))
-    console.log()
-
-    const config = loadOpenCodeConfig()
-    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
-
-    if (existsSync(getOpenCodeConfigPath())) {
-      copyFileSync(getOpenCodeConfigPath(), backupPath)
-      console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
-    }
-
-    config.model = `nvidia/${model.modelId}`
-
-    if (config.provider?.nvidia) {
-      if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
-      config.provider.nvidia.models[model.modelId] = {
-        name: model.label,
-      }
-    }
-
-    saveOpenCodeConfig(config)
-
-    // 📖 Verify config was saved correctly
-    const savedConfig = loadOpenCodeConfig()
-    console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-    console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
-    console.log()
-    
-    if (savedConfig.model === config.model) {
-      console.log(chalk.green(`  ✓ Default model set to: nvidia/${model.modelId}`))
-    } else {
-      console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
-    }
-    console.log()
-    console.log(chalk.dim('  Opening OpenCode Desktop…'))
-    console.log()
-
-    // 📖 Launch Desktop app based on platform
+  // 📖 Helper to open the Desktop app based on platform
+  const launchDesktop = async () => {
     const { exec } = await import('child_process')
-    
     let command
     if (isMac) {
       command = 'open -a OpenCode'
     } else if (isWindows) {
-      // 📖 On Windows, try common installation paths
-      // 📖 User installation: %LOCALAPPDATA%\Programs\OpenCode\OpenCode.exe
-      // 📖 System installation: C:\Program Files\OpenCode\OpenCode.exe
       command = 'start "" "%LOCALAPPDATA%\\Programs\\OpenCode\\OpenCode.exe" 2>nul || start "" "%PROGRAMFILES%\\OpenCode\\OpenCode.exe" 2>nul || start OpenCode'
     } else if (isLinux) {
-      // 📖 On Linux, try different methods with model flag
-      // 📖 Check if opencode-desktop exists, otherwise try xdg-open
-      command = `opencode-desktop --model nvidia/${model.modelId} 2>/dev/null || flatpak run ai.opencode.OpenCode --model nvidia/${model.modelId} 2>/dev/null || snap run opencode --model nvidia/${model.modelId} 2>/dev/null || xdg-open /usr/share/applications/opencode.desktop 2>/dev/null || echo "OpenCode not found"`
+      command = `opencode-desktop --model ${modelRef} 2>/dev/null || flatpak run ai.opencode.OpenCode --model ${modelRef} 2>/dev/null || snap run opencode --model ${modelRef} 2>/dev/null || xdg-open /usr/share/applications/opencode.desktop 2>/dev/null || echo "OpenCode not found"`
     }
-
-    exec(command, (err, stdout, stderr) => {
+    exec(command, (err) => {
       if (err) {
         console.error(chalk.red('  ✗ Could not open OpenCode Desktop'))
         if (isWindows) {
@@ -1014,13 +1023,56 @@ async function startOpenCodeDesktop(model) {
         }
       }
     })
-  } else {
-    console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
-    console.log(chalk.dim('  Please configure it first. Config is shared between CLI and Desktop.'))
-    console.log()
-    
-    const configPath = getOpenCodeConfigPath()
-    const installPrompt = `Add this to ${configPath}:
+  }
+
+  if (providerKey === 'nvidia') {
+    // 📖 NVIDIA NIM needs a custom provider block in OpenCode config (not built-in)
+    const hasNim = checkNvidiaNimConfig()
+
+    if (hasNim) {
+      console.log(chalk.green(`  🖥 Setting ${chalk.bold(model.label)} as default for OpenCode Desktop…`))
+      console.log(chalk.dim(`  Model: ${modelRef}`))
+      console.log()
+
+      const config = loadOpenCodeConfig()
+      const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
+
+      if (existsSync(getOpenCodeConfigPath())) {
+        copyFileSync(getOpenCodeConfigPath(), backupPath)
+        console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+      }
+
+      config.model = modelRef
+
+      if (config.provider?.nvidia) {
+        if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
+        config.provider.nvidia.models[model.modelId] = { name: model.label }
+      }
+
+      saveOpenCodeConfig(config)
+
+      const savedConfig = loadOpenCodeConfig()
+      console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
+      console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+      console.log()
+
+      if (savedConfig.model === config.model) {
+        console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+      } else {
+        console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+      }
+      console.log()
+      console.log(chalk.dim('  Opening OpenCode Desktop…'))
+      console.log()
+
+      await launchDesktop()
+    } else {
+      console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
+      console.log(chalk.dim('  Please configure it first. Config is shared between CLI and Desktop.'))
+      console.log()
+
+      const configPath = getOpenCodeConfigPath()
+      const installPrompt = `Add this to ${configPath}:
 
 {
   "provider": {
@@ -1036,8 +1088,41 @@ async function startOpenCodeDesktop(model) {
 }
 
 ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_key_here'}`
-    console.log(chalk.cyan(installPrompt))
+      console.log(chalk.cyan(installPrompt))
+      console.log()
+    }
+  } else {
+    // 📖 Groq and Cerebras are built-in OpenCode providers — just set model and open Desktop.
+    console.log(chalk.green(`  🖥 Setting ${chalk.bold(model.label)} as default for OpenCode Desktop…`))
+    console.log(chalk.dim(`  Model: ${modelRef}`))
     console.log()
+
+    const config = loadOpenCodeConfig()
+    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
+
+    if (existsSync(getOpenCodeConfigPath())) {
+      copyFileSync(getOpenCodeConfigPath(), backupPath)
+      console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+    }
+
+    config.model = modelRef
+    saveOpenCodeConfig(config)
+
+    const savedConfig = loadOpenCodeConfig()
+    console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
+    console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+    console.log()
+
+    if (savedConfig.model === config.model) {
+      console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+    } else {
+      console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+    }
+    console.log()
+    console.log(chalk.dim('  Opening OpenCode Desktop…'))
+    console.log()
+
+    await launchDesktop()
   }
 }
 
@@ -1673,7 +1758,7 @@ async function main() {
       const sorted = sortResults(results, state.sortColumn, state.sortDirection)
       const selected = sorted[state.cursor]
       // 📖 Allow selecting ANY model (even timeout/down) - user knows what they're doing
-      userSelected = { modelId: selected.modelId, label: selected.label, tier: selected.tier }
+      userSelected = { modelId: selected.modelId, label: selected.label, tier: selected.tier, providerKey: selected.providerKey }
 
       // 📖 Stop everything and act on selection immediately
       clearInterval(ticker)
