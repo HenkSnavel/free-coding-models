@@ -758,6 +758,29 @@ const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
 const isLinux = process.platform === 'linux'
 
+// ─── OpenCode model ID mapping ─────────────────────────────────────────────────
+// 📖 Source model IDs -> OpenCode built-in model IDs (only where they differ)
+// 📖 Groq's API aliases short names to full names, but OpenCode does exact ID matching
+// 📖 against its built-in model list. Unmapped models pass through as-is.
+const OPENCODE_MODEL_MAP = {
+  groq: {
+    'moonshotai/kimi-k2-instruct': 'moonshotai/kimi-k2-instruct-0905',
+    'meta-llama/llama-4-scout-17b-16e-preview': 'meta-llama/llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-maverick-17b-128e-preview': 'meta-llama/llama-4-maverick-17b-128e-instruct',
+  }
+}
+
+function getOpenCodeModelId(providerKey, modelId) {
+  return OPENCODE_MODEL_MAP[providerKey]?.[modelId] || modelId
+}
+
+// 📖 Env var names per provider -- used for passing resolved keys to child processes
+const ENV_VAR_NAMES = {
+  nvidia: 'NVIDIA_API_KEY',
+  groq: 'GROQ_API_KEY',
+  cerebras: 'CEREBRAS_API_KEY',
+}
+
 // 📖 OpenCode config location varies by platform
 // 📖 Windows: %APPDATA%\opencode\opencode.json (or sometimes ~/.config/opencode)
 // 📖 macOS/Linux: ~/.config/opencode/opencode.json
@@ -809,16 +832,50 @@ function checkNvidiaNimConfig() {
   )
 }
 
+// ─── Shared OpenCode spawn helper ──────────────────────────────────────────────
+// 📖 Resolves the actual API key from config/env and passes it as an env var
+// 📖 to the child process so OpenCode's {env:GROQ_API_KEY} references work
+// 📖 even when the key is only in ~/.free-coding-models.json (not in shell env).
+async function spawnOpenCode(args, providerKey, fcmConfig) {
+  const envVarName = ENV_VAR_NAMES[providerKey]
+  const resolvedKey = getApiKey(fcmConfig, providerKey)
+  const childEnv = { ...process.env }
+  if (envVarName && resolvedKey) childEnv[envVarName] = resolvedKey
+
+  const { spawn } = await import('child_process')
+  const child = spawn('opencode', args, {
+    stdio: 'inherit',
+    shell: true,
+    detached: false,
+    env: childEnv
+  })
+
+  return new Promise((resolve, reject) => {
+    child.on('exit', resolve)
+    child.on('error', (err) => {
+      if (err.code === 'ENOENT') {
+        console.error(chalk.red('\n  X Could not find "opencode" -- is it installed and in your PATH?'))
+        console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
+        resolve(1)
+      } else {
+        reject(err)
+      }
+    })
+  })
+}
+
 // ─── Start OpenCode ────────────────────────────────────────────────────────────
 // 📖 Launches OpenCode with the selected model.
 // 📖 Handles all 3 providers: nvidia (needs custom provider config), groq & cerebras (built-in in OpenCode).
 // 📖 For nvidia: checks if NIM is configured, sets provider.models entry, spawns with nvidia/model-id.
-// 📖 For groq/cerebras: OpenCode has built-in support — just sets model in config and spawns.
+// 📖 For groq/cerebras: OpenCode has built-in support -- just sets model in config and spawns.
 // 📖 Model format: { modelId, label, tier, providerKey }
-async function startOpenCode(model) {
+// 📖 fcmConfig: the free-coding-models config (for resolving API keys)
+async function startOpenCode(model, fcmConfig) {
   const providerKey = model.providerKey ?? 'nvidia'
-  // 📖 Full model reference string used in OpenCode config and --model flag
-  const modelRef = `${providerKey}/${model.modelId}`
+  // 📖 Map model ID to OpenCode's built-in ID if it differs from our source ID
+  const ocModelId = getOpenCodeModelId(providerKey, model.modelId)
+  const modelRef = `${providerKey}/${ocModelId}`
 
   if (providerKey === 'nvidia') {
     // 📖 NVIDIA NIM needs a custom provider block in OpenCode config (not built-in)
@@ -840,11 +897,9 @@ async function startOpenCode(model) {
       config.model = modelRef
 
       // 📖 Register the model in the nvidia provider's models section
-      // 📖 OpenCode requires models to be explicitly listed in provider.models
-      // 📖 to recognize them — without this, it falls back to the previous default
       if (config.provider?.nvidia) {
         if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
-        config.provider.nvidia.models[model.modelId] = { name: model.label }
+        config.provider.nvidia.models[ocModelId] = { name: model.label }
       }
 
       saveOpenCodeConfig(config)
@@ -863,27 +918,9 @@ async function startOpenCode(model) {
       console.log(chalk.dim('  Starting OpenCode…'))
       console.log()
 
-      const { spawn } = await import('child_process')
-      const child = spawn('opencode', ['--model', modelRef], {
-        stdio: 'inherit',
-        shell: true,
-        detached: false
-      })
-
-      await new Promise((resolve, reject) => {
-        child.on('exit', resolve)
-        child.on('error', (err) => {
-          if (err.code === 'ENOENT') {
-            console.error(chalk.red('\n  ✗ Could not find "opencode" — is it installed and in your PATH?'))
-            console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
-            resolve(1)
-          } else {
-            reject(err)
-          }
-        })
-      })
+      await spawnOpenCode(['--model', modelRef], providerKey, fcmConfig)
     } else {
-      // 📖 NVIDIA NIM not configured — show install prompt
+      // 📖 NVIDIA NIM not configured -- show install prompt
       console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
       console.log()
       console.log(chalk.dim('  Starting OpenCode with installation prompt…'))
@@ -914,29 +951,11 @@ After installation, you can use: opencode --model ${modelRef}`
       console.log(chalk.dim('  Starting OpenCode…'))
       console.log()
 
-      const { spawn } = await import('child_process')
-      const child = spawn('opencode', [], {
-        stdio: 'inherit',
-        shell: true,
-        detached: false
-      })
-
-      await new Promise((resolve, reject) => {
-        child.on('exit', resolve)
-        child.on('error', (err) => {
-          if (err.code === 'ENOENT') {
-            console.error(chalk.red('\n  ✗ Could not find "opencode" — is it installed and in your PATH?'))
-            console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
-            resolve(1)
-          } else {
-            reject(err)
-          }
-        })
-      })
+      await spawnOpenCode([], providerKey, fcmConfig)
     }
   } else {
-    // 📖 Groq: built-in OpenCode provider — needs provider block with apiKey in opencode.json.
-    // 📖 Cerebras: NOT built-in — needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
+    // 📖 Groq: built-in OpenCode provider -- needs provider block with apiKey in opencode.json.
+    // 📖 Cerebras: NOT built-in -- needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
     // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
     console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
     console.log(chalk.dim(`  Model: ${modelRef}`))
@@ -974,9 +993,12 @@ After installation, you can use: opencode --model ${modelRef}`
     }
 
     // 📖 Register the model in the provider's models section
-    // 📖 OpenCode requires models to be explicitly listed to recognize them
-    if (!config.provider[providerKey].models) config.provider[providerKey].models = {}
-    config.provider[providerKey].models[model.modelId] = { name: model.label }
+    // 📖 Only register custom models -- skip if the model maps to a built-in OpenCode ID
+    const isBuiltinMapped = OPENCODE_MODEL_MAP[providerKey]?.[model.modelId]
+    if (!isBuiltinMapped) {
+      if (!config.provider[providerKey].models) config.provider[providerKey].models = {}
+      config.provider[providerKey].models[ocModelId] = { name: model.label }
+    }
 
     config.model = modelRef
     saveOpenCodeConfig(config)
@@ -995,25 +1017,7 @@ After installation, you can use: opencode --model ${modelRef}`
     console.log(chalk.dim('  Starting OpenCode…'))
     console.log()
 
-    const { spawn } = await import('child_process')
-    const child = spawn('opencode', ['--model', modelRef], {
-      stdio: 'inherit',
-      shell: true,
-      detached: false
-    })
-
-    await new Promise((resolve, reject) => {
-      child.on('exit', resolve)
-      child.on('error', (err) => {
-        if (err.code === 'ENOENT') {
-          console.error(chalk.red('\n  ✗ Could not find "opencode" — is it installed and in your PATH?'))
-          console.error(chalk.dim('    Install: npm i -g opencode   or see https://opencode.ai'))
-          resolve(1)
-        } else {
-          reject(err)
-        }
-      })
-    })
+    await spawnOpenCode(['--model', modelRef], providerKey, fcmConfig)
   }
 }
 
@@ -1022,10 +1026,11 @@ After installation, you can use: opencode --model ${modelRef}`
 // 📖 OpenCode Desktop shares config at the same location as CLI.
 // 📖 Handles all 3 providers: nvidia (needs custom provider config), groq & cerebras (built-in).
 // 📖 No need to wait for exit — Desktop app stays open independently.
-async function startOpenCodeDesktop(model) {
+async function startOpenCodeDesktop(model, fcmConfig) {
   const providerKey = model.providerKey ?? 'nvidia'
-  // 📖 Full model reference string used in OpenCode config and --model flag
-  const modelRef = `${providerKey}/${model.modelId}`
+  // 📖 Map model ID to OpenCode's built-in ID if it differs from our source ID
+  const ocModelId = getOpenCodeModelId(providerKey, model.modelId)
+  const modelRef = `${providerKey}/${ocModelId}`
 
   // 📖 Helper to open the Desktop app based on platform
   const launchDesktop = async () => {
@@ -1074,7 +1079,7 @@ async function startOpenCodeDesktop(model) {
 
       if (config.provider?.nvidia) {
         if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
-        config.provider.nvidia.models[model.modelId] = { name: model.label }
+        config.provider.nvidia.models[ocModelId] = { name: model.label }
       }
 
       saveOpenCodeConfig(config)
@@ -1157,8 +1162,12 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
     }
 
     // 📖 Register the model in the provider's models section
-    if (!config.provider[providerKey].models) config.provider[providerKey].models = {}
-    config.provider[providerKey].models[model.modelId] = { name: model.label }
+    // 📖 Only register custom models -- skip if the model maps to a built-in OpenCode ID
+    const isBuiltinMapped = OPENCODE_MODEL_MAP[providerKey]?.[model.modelId]
+    if (!isBuiltinMapped) {
+      if (!config.provider[providerKey].models) config.provider[providerKey].models = {}
+      config.provider[providerKey].models[ocModelId] = { name: model.label }
+    }
 
     config.model = modelRef
     saveOpenCodeConfig(config)
@@ -1455,7 +1464,7 @@ async function main() {
   // 📖 Clamp scrollOffset so cursor is always within the visible viewport window.
   // 📖 Called after every cursor move, sort change, and terminal resize.
   const adjustScrollOffset = (st) => {
-    const total = st.results.length
+    const total = st.visibleSorted ? st.visibleSorted.length : st.results.filter(r => !r.hidden).length
     let maxSlots = st.terminalRows - 10  // 5 header + 5 footer
     if (maxSlots < 1) maxSlots = 1
     if (total <= maxSlots) { st.scrollOffset = 0; return }
@@ -1502,6 +1511,7 @@ async function main() {
     settingsEditBuffer: '',       // 📖 Typed characters for the API key being edited
     settingsTestResults: {},      // 📖 { providerKey: 'pending'|'ok'|'fail'|null }
     config,                       // 📖 Live reference to the config object (updated on save)
+    visibleSorted: [],            // 📖 Cached visible+sorted models — shared between render loop and key handlers
   }
 
   // 📖 Re-clamp viewport on terminal resize
@@ -1758,7 +1768,11 @@ async function main() {
         state.sortColumn = col
         state.sortDirection = 'asc'
       }
-      adjustScrollOffset(state)
+      // 📖 Recompute visible sorted list and reset cursor to top to avoid stale index
+      const visible = state.results.filter(r => !r.hidden)
+      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+      state.cursor = 0
+      state.scrollOffset = 0
       return
     }
 
@@ -1774,7 +1788,11 @@ async function main() {
     if (key.name === 't') {
       tierFilterMode = (tierFilterMode + 1) % TIER_CYCLE.length
       applyTierFilter()
-      adjustScrollOffset(state)
+      // 📖 Recompute visible sorted list and reset cursor to avoid stale index into new filtered set
+      const visible = state.results.filter(r => !r.hidden)
+      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+      state.cursor = 0
+      state.scrollOffset = 0
       return
     }
 
@@ -1801,7 +1819,7 @@ async function main() {
     }
 
     if (key.name === 'down') {
-      if (state.cursor < results.length - 1) {
+      if (state.cursor < state.visibleSorted.length - 1) {
         state.cursor++
         adjustScrollOffset(state)
       }
@@ -1814,9 +1832,9 @@ async function main() {
     }
 
     if (key.name === 'return') { // Enter
-      // 📖 Use the same sorting as the table display
-      const sorted = sortResults(results, state.sortColumn, state.sortDirection)
-      const selected = sorted[state.cursor]
+      // 📖 Use the cached visible+sorted array — guaranteed to match what's on screen
+      const selected = state.visibleSorted[state.cursor]
+      if (!selected) return // 📖 Guard: empty visible list (all filtered out)
       // 📖 Allow selecting ANY model (even timeout/down) - user knows what they're doing
       userSelected = { modelId: selected.modelId, label: selected.label, tier: selected.tier, providerKey: selected.providerKey }
 
@@ -1839,13 +1857,24 @@ async function main() {
       }
       console.log()
 
+      // 📖 Warn if no API key is configured for the selected model's provider
+      if (state.mode !== 'openclaw') {
+        const selectedApiKey = getApiKey(state.config, selected.providerKey)
+        if (!selectedApiKey) {
+          console.log(chalk.yellow(`  Warning: No API key configured for ${selected.providerKey}.`))
+          console.log(chalk.yellow(`  OpenCode may not be able to use ${selected.label}.`))
+          console.log(chalk.dim(`  Set ${ENV_VAR_NAMES[selected.providerKey] || selected.providerKey.toUpperCase() + '_API_KEY'} or configure via settings (P key).`))
+          console.log()
+        }
+      }
+
       // 📖 Dispatch to the correct integration based on active mode
       if (state.mode === 'openclaw') {
         await startOpenClaw(userSelected, apiKey)
       } else if (state.mode === 'opencode-desktop') {
-        await startOpenCodeDesktop(userSelected)
+        await startOpenCodeDesktop(userSelected, state.config)
       } else {
-        await startOpenCode(userSelected)
+        await startOpenCode(userSelected, state.config)
       }
       process.exit(0)
     }
@@ -1862,11 +1891,20 @@ async function main() {
   // 📖 Animation loop: render settings overlay OR main table based on state
   const ticker = setInterval(() => {
     state.frame++
+    // 📖 Cache visible+sorted models each frame so Enter handler always matches the display
+    if (!state.settingsOpen) {
+      const visible = state.results.filter(r => !r.hidden)
+      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+    }
     const content = state.settingsOpen
       ? renderSettings()
       : renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows)
     process.stdout.write(ALT_HOME + content)
   }, Math.round(1000 / FPS))
+
+  // 📖 Populate visibleSorted before the first frame so Enter works immediately
+  const initialVisible = state.results.filter(r => !r.hidden)
+  state.visibleSorted = sortResults(initialVisible, state.sortColumn, state.sortDirection)
 
   process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows))
 
