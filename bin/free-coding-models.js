@@ -772,6 +772,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Star on GitHub\x1b]8;;\x1b\\')
+  // 📖 GitHub contributors — update when new PRs are merged
+  lines.push(chalk.dim('  🤝 Contributors: ') + chalk.rgb(180, 180, 255)('\x1b]8;;https://github.com/whit3rabbit\x1b\\@whit3rabbit\x1b]8;;\x1b\\'))
   // 📖 Discord invite + BETA warning — always visible at the bottom of the TUI
   lines.push('  💬 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Join our Discord\x1b]8;;\x1b\\') + chalk.dim(' → ') + chalk.cyanBright('https://discord.gg/5MbTnDC3Md') + chalk.dim('  •  ') + chalk.yellow('⚠ BETA TUI') + chalk.dim(' — might crash or have problems'))
   lines.push('')

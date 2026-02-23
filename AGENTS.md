@@ -71,6 +71,12 @@ When releasing a new version, follow this exact process:
 - **CLI arg parsing** — all flags (--best, --fiable, --opencode, --openclaw, --tier)
 - **Package sanity** — package.json fields, bin entry exists, shebang, ESM imports
 
+## GitHub Contributors
+
+When new PRs are merged, add the contributor's GitHub handle to the footer in `bin/free-coding-models.js` (the `Contributors:` line near line 775), separated by spaces. Also update this list:
+
+- @whit3rabbit
+
 ## Changelog (MANDATORY)
 
 **⚠️ CRITICAL:** After every dev session (feature, fix, refactor), add a succinct entry to `CHANGELOG.md` BEFORE pushing:
