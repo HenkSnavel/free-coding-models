@@ -2,6 +2,70 @@
 
 ---
 
+## 0.1.61
+
+### Changed — TUI Footer & UX
+
+- **"Made with" line is now pink**: the entire "Made with 💖 & ☕ by vava-nessa" sentence is now rendered in soft pink (`chalk.rgb(255,150,200)`) including the clickable author name link, making it visually distinct from the rest of the footer
+- **`K Help` badge is now ultra-visible**: changed from plain green background to bright green (`bgGreenBright`) with **black bold text** — high contrast, stands out immediately at a glance in the footer hint line
+- **`P` key closes Settings**: pressing `P` again while inside the Settings screen now closes it (same behavior as `Esc`). Previously only `Esc` worked. Both keys now trigger the same close + provider rebuild logic
+
+---
+
+## 0.1.60
+
+### Changed — TUI Footer
+
+- **Discord URL now shown in plain text**: after the clickable "Join our Discord" hyperlink, the raw URL `https://discord.gg/5MbTnDC3Md` is now printed in cyan, separated by `→`. This helps users on terminals that don't support OSC 8 clickable links to still see and copy-paste the URL.
+
+---
+
+## 0.1.59
+
+### Changed — TUI Footer
+
+- **`K Help` badge in footer is now bright green**: previously plain text, now rendered as `chalk.bgGreen.black.bold(' K Help ')` so it's immediately visible in the footer hint line
+
+---
+
+## 0.1.58
+
+### Changed — TUI
+
+- **Timeout emoji updated**: replaced `⏱` with `⏳` everywhere in the TUI (ping timeout display)
+
+---
+
+## 0.1.57
+
+### Changed — TUI Footer
+
+- **Discord link text shortened**: "Join our Discord" replaces the longer previous label — cleaner footer, same clickable OSC 8 hyperlink
+
+---
+
+## 0.1.56
+
+### Changed — TUI Footer
+
+- **Footer cleaned up and restructured**: removed duplicate/messy lines left by the 0.1.54 agent; consolidated into two clean footer lines:
+  - Line 1: `Made with 💖 & ☕ by vava-nessa  •  ⭐ Star on GitHub` (clickable links)
+  - Line 2: `💬 Join our Discord  •  ⚠ BETA TUI — might crash or have problems`
+- **BETA warning added to TUI footer**: `⚠ BETA TUI` badge in yellow with a plain-text disclaimer, always visible at the bottom of the TUI app
+- **Discord invite in TUI footer**: clickable OSC 8 hyperlink added directly in the footer (was only in README before)
+
+---
+
+## 0.1.55
+
+### Changed — README & Documentation
+
+- **README updated for 9 providers / 101 models**: badges, provider list, Support section, and Requirements section all updated to reflect the new state after 0.1.54
+- **Discord header block reformatted**: replaced the join banner with a plain `💬 Let's talk about the project on Discord` link
+- **BETA warning added to README**: inline `⚠️ free-coding-models is a BETA TUI — expect rough edges and occasional crashes` added to the docs link line in the Support section
+
+---
+
 ## 0.1.54
 
 ### Added — Providers & Models
