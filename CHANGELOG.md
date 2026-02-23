@@ -2,6 +2,11 @@
 
 ---
 
+## 0.1.51
+
+### Fixed
+- **Groq/Cerebras models selected for OpenCode had no provider block**: even with the correct `groq/model-id` prefix, OpenCode couldn't use the model because no `provider.groq` block existed in `opencode.json` — now automatically creates the provider block (Groq: built-in with `apiKey: {env:GROQ_API_KEY}`; Cerebras: `@ai-sdk/openai-compatible` with baseURL) and registers the model in `provider.<key>.models`
+
 ## 0.1.50
 
 ### Fixed

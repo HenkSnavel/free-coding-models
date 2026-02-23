@@ -935,9 +935,9 @@ After installation, you can use: opencode --model ${modelRef}`
       })
     }
   } else {
-    // 📖 Groq and Cerebras are built-in OpenCode providers — no custom provider config needed.
-    // 📖 OpenCode discovers them via GROQ_API_KEY / CEREBRAS_API_KEY env vars automatically.
-    // 📖 Just set the model in config and launch with --model groq/model-id.
+    // 📖 Groq: built-in OpenCode provider — needs provider block with apiKey in opencode.json.
+    // 📖 Cerebras: NOT built-in — needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
+    // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
     console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
     console.log(chalk.dim(`  Model: ${modelRef}`))
     console.log()
@@ -949,6 +949,34 @@ After installation, you can use: opencode --model ${modelRef}`
       copyFileSync(getOpenCodeConfigPath(), backupPath)
       console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
     }
+
+    // 📖 Ensure the provider block exists in config — create it if missing
+    if (!config.provider) config.provider = {}
+    if (!config.provider[providerKey]) {
+      if (providerKey === 'groq') {
+        // 📖 Groq is a built-in OpenCode provider — just needs apiKey options, no npm package
+        config.provider.groq = {
+          options: { apiKey: '{env:GROQ_API_KEY}' },
+          models: {}
+        }
+      } else if (providerKey === 'cerebras') {
+        // 📖 Cerebras is OpenAI-compatible — needs npm package and baseURL like NVIDIA
+        config.provider.cerebras = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Cerebras',
+          options: {
+            baseURL: 'https://api.cerebras.ai/v1',
+            apiKey: '{env:CEREBRAS_API_KEY}'
+          },
+          models: {}
+        }
+      }
+    }
+
+    // 📖 Register the model in the provider's models section
+    // 📖 OpenCode requires models to be explicitly listed to recognize them
+    if (!config.provider[providerKey].models) config.provider[providerKey].models = {}
+    config.provider[providerKey].models[model.modelId] = { name: model.label }
 
     config.model = modelRef
     saveOpenCodeConfig(config)
@@ -1092,7 +1120,9 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
       console.log()
     }
   } else {
-    // 📖 Groq and Cerebras are built-in OpenCode providers — just set model and open Desktop.
+    // 📖 Groq: built-in OpenCode provider — needs provider block with apiKey in opencode.json.
+    // 📖 Cerebras: NOT built-in — needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
+    // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
     console.log(chalk.green(`  🖥 Setting ${chalk.bold(model.label)} as default for OpenCode Desktop…`))
     console.log(chalk.dim(`  Model: ${modelRef}`))
     console.log()
@@ -1104,6 +1134,31 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
       copyFileSync(getOpenCodeConfigPath(), backupPath)
       console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
     }
+
+    // 📖 Ensure the provider block exists in config — create it if missing
+    if (!config.provider) config.provider = {}
+    if (!config.provider[providerKey]) {
+      if (providerKey === 'groq') {
+        config.provider.groq = {
+          options: { apiKey: '{env:GROQ_API_KEY}' },
+          models: {}
+        }
+      } else if (providerKey === 'cerebras') {
+        config.provider.cerebras = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Cerebras',
+          options: {
+            baseURL: 'https://api.cerebras.ai/v1',
+            apiKey: '{env:CEREBRAS_API_KEY}'
+          },
+          models: {}
+        }
+      }
+    }
+
+    // 📖 Register the model in the provider's models section
+    if (!config.provider[providerKey].models) config.provider[providerKey].models = {}
+    config.provider[providerKey].models[model.modelId] = { name: model.label }
 
     config.model = modelRef
     saveOpenCodeConfig(config)
