@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/npm/v/free-coding-models?color=76b900&label=npm&logo=npm" alt="npm version">
   <img src="https://img.shields.io/node/v/free-coding-models?color=76b900&logo=node.js" alt="node version">
   <img src="https://img.shields.io/npm/l/free-coding-models?color=76b900" alt="license">
-  <img src="https://img.shields.io/badge/models-101-76b900?logo=nvidia" alt="models count">
-  <img src="https://img.shields.io/badge/providers-9-blue" alt="providers count">
+  <img src="https://img.shields.io/badge/models-111-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/providers-13-blue" alt="providers count">
 </p>
 
 <h1 align="center">free-coding-models</h1>
@@ -15,7 +15,7 @@
 <p align="center">
 
 ```
-1. Create a free API key (NVIDIA, Groq, or Cerebras)
+1. Create a free API key (NVIDIA, OpenRouter, Hugging Face, etc.)
 2. npm i -g free-coding-models
 3. free-coding-models
 ```
@@ -24,7 +24,7 @@
 
 <p align="center">
   <strong>Find the fastest coding LLM models in seconds</strong><br>
-  <sub>Ping free models from NVIDIA NIM, Groq, Cerebras, and SambaNova in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
+  <sub>Ping free coding models from 13 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@
 ## ✨ Features
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
-- **🌐 Multi-provider** — 101 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Codestral, Hyperbolic, Scaleway, and Google AI — all free to use
+- **🌐 Multi-provider** — 111 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, and Google AI — all free to use
 - **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, and test keys live
 - **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
@@ -77,8 +77,12 @@ Before using `free-coding-models`, make sure you have:
    - **NVIDIA NIM** — [build.nvidia.com](https://build.nvidia.com) → Profile → API Keys → Generate
    - **Groq** — [console.groq.com/keys](https://console.groq.com/keys) → Create API Key
    - **Cerebras** — [cloud.cerebras.ai](https://cloud.cerebras.ai) → API Keys → Create
-   - **SambaNova** — [cloud.sambanova.ai/apis](https://cloud.sambanova.ai/apis) → API Keys → Create ($5 free trial, 3 months)
-   - **OpenRouter** — [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) → Create key (50 free req/day)
+   - **SambaNova** — [sambanova.ai/developers](https://sambanova.ai/developers) → Developers portal → API key (dev tier generous)
+   - **OpenRouter** — [openrouter.ai/keys](https://openrouter.ai/keys) → Create key (50 req/day, 20/min on `:free`)
+   - **Hugging Face Inference** — [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) → Access Tokens (free monthly credits)
+   - **Replicate** — [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens) → Create token (dev quota)
+   - **DeepInfra** — [deepinfra.com/login](https://deepinfra.com/login) → Login → API key (free dev tier)
+   - **Fireworks AI** — [fireworks.ai](https://fireworks.ai) → Settings → Access Tokens ($1 free credits)
    - **Mistral Codestral** — [codestral.mistral.ai](https://codestral.mistral.ai) → API Keys (30 req/min, 2000/day — phone required)
    - **Hyperbolic** — [app.hyperbolic.ai/settings](https://app.hyperbolic.ai/settings) → API Keys ($1 free trial)
    - **Scaleway** — [console.scaleway.com/iam/api-keys](https://console.scaleway.com/iam/api-keys) → IAM → API Keys (1M free tokens)
@@ -86,7 +90,7 @@ Before using `free-coding-models`, make sure you have:
 3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
 4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** You don't need all nine providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
+> 💡 **Tip:** You don't need all thirteen providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
 
 ---
 
@@ -167,13 +171,13 @@ When you run `free-coding-models` without `--opencode` or `--openclaw`, you get 
 Use `↑↓` arrows to select, `Enter` to confirm. Then the TUI launches with your chosen mode shown in the header badge.
 
 **How it works:**
-1. **Ping phase** — All enabled models are pinged in parallel (up to 101 across 9 providers)
+1. **Ping phase** — All enabled models are pinged in parallel (up to 111 across 13 providers)
 2. **Continuous monitoring** — Models are re-pinged every 2 seconds forever
 3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to act
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode or OpenClaw
 
-Setup wizard (first run — walks through all 9 providers):
+Setup wizard (first run — walks through all 13 providers):
 
 ```
   🔑 First-time setup — API keys
@@ -203,7 +207,7 @@ Setup wizard (first run — walks through all 9 providers):
   You can add or change keys anytime with the P key in the TUI.
 ```
 
-You don't need all nine — skip any provider by pressing Enter. At least one key is required.
+You don't need all thirteen — skip any provider by pressing Enter. At least one key is required.
 
 ### Adding or changing keys later
 
@@ -214,9 +218,14 @@ Press **`P`** to open the Settings screen at any time:
 
   Providers
 
-  ❯ [ ✅ ] NIM         nvapi-••••••••••••3f9a  [Test ✅]
-    [ ✅ ] Groq        (no key set)            [Test —]
-    [ ✅ ] Cerebras    (no key set)            [Test —]
+  ❯ [ ✅ ] NVIDIA NIM              nvapi-••••••••••••3f9a  [Test ✅]  Free tier (provider quota by model)
+    [ ✅ ] OpenRouter              (no key set)            [Test —]   50 req/day, 20/min (:free shared quota)
+    [ ✅ ] Hugging Face Inference  (no key set)            [Test —]   Free monthly credits (~$0.10)
+
+  Setup Instructions — NVIDIA NIM
+  1) Create a NVIDIA NIM account: https://build.nvidia.com
+  2) Profile → API Keys → Generate
+  3) Press T to test your key
 
   ↑↓ Navigate  •  Enter Edit key  •  Space Toggle enabled  •  T Test key  •  Esc Close
 ```
@@ -239,6 +248,11 @@ Env vars always take priority over the config file:
 NVIDIA_API_KEY=nvapi-xxx free-coding-models
 GROQ_API_KEY=gsk_xxx free-coding-models
 CEREBRAS_API_KEY=csk_xxx free-coding-models
+OPENROUTER_API_KEY=sk-or-xxx free-coding-models
+HUGGINGFACE_API_KEY=hf_xxx free-coding-models
+REPLICATE_API_TOKEN=r8_xxx free-coding-models
+DEEPINFRA_API_KEY=di_xxx free-coding-models
+FIREWORKS_API_KEY=fw_xxx free-coding-models
 FREE_CODING_MODELS_TELEMETRY=0 free-coding-models
 ```
 
@@ -268,13 +282,33 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 1. Sign up at [cloud.cerebras.ai](https://cloud.cerebras.ai)
 2. Go to API Keys → Create
 
-> 💡 **Free credits** — All three providers offer free tiers for developers.
+**OpenRouter** (`:free` models):
+1. Sign up at [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Create API key (`sk-or-...`)
+
+**Hugging Face Inference**:
+1. Sign up at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+2. Create Access Token (`hf_...`)
+
+**Replicate**:
+1. Sign up at [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens)
+2. Create API token (`r8_...`)
+
+**DeepInfra**:
+1. Sign up at [deepinfra.com/login](https://deepinfra.com/login)
+2. Create API key from your account dashboard
+
+**Fireworks AI**:
+1. Sign up at [fireworks.ai](https://fireworks.ai)
+2. Open Settings → Access Tokens and create a token
+
+> 💡 **Free tiers** — each provider exposes a dev/free tier with its own quotas.
 
 ---
 
 ## 🤖 Coding Models
 
-**101 coding models** across 9 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**111 coding models** across 13 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
 
 ### NVIDIA NIM (44 models)
 
@@ -535,6 +569,15 @@ This script:
 | `NVIDIA_API_KEY` | NVIDIA NIM key |
 | `GROQ_API_KEY` | Groq key |
 | `CEREBRAS_API_KEY` | Cerebras key |
+| `SAMBANOVA_API_KEY` | SambaNova key |
+| `OPENROUTER_API_KEY` | OpenRouter key |
+| `HUGGINGFACE_API_KEY` / `HF_TOKEN` | Hugging Face token |
+| `REPLICATE_API_TOKEN` | Replicate token |
+| `DEEPINFRA_API_KEY` / `DEEPINFRA_TOKEN` | DeepInfra key |
+| `CODESTRAL_API_KEY` | Mistral Codestral key |
+| `HYPERBOLIC_API_KEY` | Hyperbolic key |
+| `SCALEWAY_API_KEY` | Scaleway key |
+| `GOOGLE_API_KEY` | Google AI Studio key |
 | `FREE_CODING_MODELS_TELEMETRY` | `0` disables analytics, `1` enables analytics |
 | `FREE_CODING_MODELS_POSTHOG_KEY` | PostHog project API key used for anonymous event capture |
 | `FREE_CODING_MODELS_POSTHOG_HOST` | Optional PostHog ingest host (`https://eu.i.posthog.com` default) |
@@ -546,12 +589,20 @@ This script:
   "apiKeys": {
     "nvidia":   "nvapi-xxx",
     "groq":     "gsk_xxx",
-    "cerebras": "csk_xxx"
+    "cerebras": "csk_xxx",
+    "openrouter": "sk-or-xxx",
+    "huggingface": "hf_xxx",
+    "replicate": "r8_xxx",
+    "deepinfra": "di_xxx"
   },
   "providers": {
     "nvidia":   { "enabled": true },
     "groq":     { "enabled": true },
-    "cerebras": { "enabled": true }
+    "cerebras": { "enabled": true },
+    "openrouter": { "enabled": true },
+    "huggingface": { "enabled": true },
+    "replicate": { "enabled": true },
+    "deepinfra": { "enabled": true }
   },
   "telemetry": {
     "enabled": true,

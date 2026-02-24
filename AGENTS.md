@@ -86,6 +86,7 @@ When new PRs are merged, add the contributor's GitHub handle to the footer in `b
 - If the current version is already published, do **not** add new entries under that published version: create the **next** version header (example: `0.1.63` already published → document new work under `0.1.64`)
 - List changes under `### Added`, `### Fixed`, or `### Changed` as appropriate
 - Keep entries short — one line per change is enough
+- Keep the top release section clean and user-facing so it can be reused directly in the GitHub Release notes screen (clear bullets, no internal noise)
 - Include ALL changes made during the session
 - Update CHANGELOG.md BEFORE committing and pushing
 

@@ -27,8 +27,8 @@
  *   📖 Secondary: https://swe-rebench.com (independent evals, scores are lower)
  *   📖 Leaderboard tracker: https://www.marc0.dev/en/leaderboard
  *
- *   @exports nvidiaNim, groq, cerebras, sambanova, openrouter, codestral, hyperbolic, scaleway, googleai — model arrays per provider
- *   @exports sources — map of { nvidia, groq, cerebras, sambanova, openrouter, codestral, hyperbolic, scaleway, googleai } each with { name, url, models }
+ *   @exports nvidiaNim, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai — model arrays per provider
+ *   @exports sources — map of { nvidia, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai } each with { name, url, models }
  *   @exports MODELS — flat array of [modelId, label, tier, sweScore, ctx, providerKey]
  *
  *   📖 MODELS now includes providerKey as 6th element so ping() knows which
@@ -139,13 +139,17 @@ export const sambanova = [
   ['Meta-Llama-3.3-70B-Instruct',          'Llama 3.3 70B',      'A-', '39.5%', '128k'],
   // ── B tier ──
   ['Meta-Llama-3.1-8B-Instruct',           'Llama 3.1 8B',       'B',  '28.8%', '128k'],
+  // ── A tier — requested Llama3-Groq coding tuned family ──
+  ['Llama-3-Groq-70B-Tool-Use',            'Llama3-Groq 70B',    'A',  '43.0%', '128k'],
 ]
 
 // 📖 OpenRouter source - https://openrouter.ai
 // 📖 Free :free models with shared quota — 50 free req/day
-// 📖 API keys at https://openrouter.ai/settings/keys
+// 📖 API keys at https://openrouter.ai/keys
 export const openrouter = [
-  ['qwen/qwen3-coder:free',                    'Qwen3 Coder',        'S+', '70.6%', '256k'],
+  ['qwen/qwen3-coder:480b-free',               'Qwen3 Coder 480B',   'S+', '70.6%', '256k'],
+  ['mistralai/devstral-2-free',                'Devstral 2',         'S+', '72.2%', '256k'],
+  ['mimo-v2-flash-free',                       'Mimo V2 Flash',      'A',  '45.0%', '128k'],
   ['stepfun/step-3.5-flash:free',              'Step 3.5 Flash',     'S+', '74.4%', '256k'],
   ['deepseek/deepseek-r1-0528:free',           'DeepSeek R1 0528',   'S',  '61.0%', '128k'],
   ['qwen/qwen3-next-80b-a3b-instruct:free',    'Qwen3 80B Instruct', 'S',  '65.0%', '128k'],
@@ -153,6 +157,35 @@ export const openrouter = [
   ['openai/gpt-oss-20b:free',                  'GPT OSS 20B',        'A',  '42.0%', '128k'],
   ['nvidia/nemotron-3-nano-30b-a3b:free',      'Nemotron Nano 30B',  'A',  '43.0%', '128k'],
   ['meta-llama/llama-3.3-70b-instruct:free',   'Llama 3.3 70B',      'A-', '39.5%', '128k'],
+]
+
+// 📖 Hugging Face Inference source - https://huggingface.co
+// 📖 OpenAI-compatible endpoint via router.huggingface.co/v1
+// 📖 Free monthly credits on developer accounts (~$0.10) — token at https://huggingface.co/settings/tokens
+export const huggingface = [
+  ['deepseek-ai/DeepSeek-V3-Coder',            'DeepSeek V3 Coder',  'S',  '62.0%', '128k'],
+  ['bigcode/starcoder2-15b',                   'StarCoder2 15B',     'B',  '25.0%', '16k'],
+]
+
+// 📖 Replicate source - https://replicate.com
+// 📖 Uses predictions endpoint (not OpenAI chat-completions) with token auth
+export const replicate = [
+  ['codellama/CodeLlama-70b-Instruct-hf',      'CodeLlama 70B',      'A-', '39.0%', '16k'],
+]
+
+// 📖 DeepInfra source - https://deepinfra.com
+// 📖 OpenAI-compatible endpoint: https://api.deepinfra.com/v1/openai/chat/completions
+export const deepinfra = [
+  ['mistralai/Mixtral-8x22B-Instruct-v0.1',    'Mixtral Code',       'B+', '32.0%', '64k'],
+  ['meta-llama/Meta-Llama-3.1-70B-Instruct',   'Llama 3.1 70B',      'A-', '39.5%', '128k'],
+]
+
+// 📖 Fireworks AI source - https://fireworks.ai
+// 📖 OpenAI-compatible endpoint: https://api.fireworks.ai/inference/v1/chat/completions
+// 📖 Free trial credits: $1 for new developers
+export const fireworks = [
+  ['accounts/fireworks/models/deepseek-v3',    'DeepSeek V3',        'S',  '62.0%', '128k'],
+  ['accounts/fireworks/models/deepseek-r1',    'DeepSeek R1',        'S',  '61.0%', '128k'],
 ]
 
 // 📖 Mistral Codestral source - https://codestral.mistral.ai
@@ -224,6 +257,26 @@ export const sources = {
     name: 'OpenRouter',
     url: 'https://openrouter.ai/api/v1/chat/completions',
     models: openrouter,
+  },
+  huggingface: {
+    name: 'Hugging Face',
+    url: 'https://router.huggingface.co/v1/chat/completions',
+    models: huggingface,
+  },
+  replicate: {
+    name: 'Replicate',
+    url: 'https://api.replicate.com/v1/predictions',
+    models: replicate,
+  },
+  deepinfra: {
+    name: 'DeepInfra',
+    url: 'https://api.deepinfra.com/v1/openai/chat/completions',
+    models: deepinfra,
+  },
+  fireworks: {
+    name: 'Fireworks',
+    url: 'https://api.fireworks.ai/inference/v1/chat/completions',
+    models: fireworks,
   },
   codestral: {
     name: 'Codestral',

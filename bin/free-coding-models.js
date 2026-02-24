@@ -10,7 +10,7 @@
  *   During benchmarking, users can navigate with arrow keys and press Enter to act on the selected model.
  *
  *   🎯 Key features:
- *   - Parallel pings across all models with animated real-time updates (3 providers: NIM, Groq, Cerebras)
+ *   - Parallel pings across all models with animated real-time updates (multi-provider)
  *   - Continuous monitoring with 2-second ping intervals (never stops)
  *   - Rolling averages calculated from ALL successful pings since start
  *   - Best-per-tier highlighting with medals (🥇🥈🥉)
@@ -19,7 +19,7 @@
  *   - Startup mode menu (OpenCode CLI vs OpenCode Desktop vs OpenClaw) when no flag is given
  *   - Automatic config detection and model setup for both tools
  *   - JSON config stored in ~/.free-coding-models.json (auto-migrates from old plain-text)
- *   - Multi-provider support via sources.js (NIM, Groq, Cerebras — extensible)
+ *   - Multi-provider support via sources.js (NIM/Groq/Cerebras/OpenRouter/Hugging Face/Replicate/DeepInfra/... — extensible)
  *   - Settings screen (P key) to manage API keys per provider, enable/disable, test keys
  *   - Uptime percentage tracking (successful pings / total pings)
  *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/U keys)
@@ -32,9 +32,9 @@
  *   - `getTelemetryTerminal`: Infer terminal family (Terminal.app, iTerm2, kitty, etc.)
  *   - `isTelemetryDebugEnabled` / `telemetryDebug`: Optional runtime telemetry diagnostics via env
  *   - `sendUsageTelemetry`: Fire-and-forget anonymous app-start event
- *   - `promptApiKey`: Interactive wizard for first-time NVIDIA API key setup
+ *   - `promptApiKey`: Interactive wizard for first-time multi-provider API key setup
  *   - `promptModeSelection`: Startup menu to choose OpenCode vs OpenClaw
- *   - `ping`: Perform HTTP request to NIM endpoint with timeout handling
+ *   - `buildPingRequest` / `ping`: Build provider-specific probe requests and measure latency
  *   - `renderTable`: Generate ASCII table with colored latency indicators and status emojis
  *   - `getAvg`: Calculate average latency from all successful pings
  *   - `getVerdict`: Determine verdict string based on average latency (Overloaded for 429)
@@ -58,8 +58,8 @@
  *   ⚙️ Configuration:
  *   - API keys stored per-provider in ~/.free-coding-models.json (0600 perms)
  *   - Old ~/.free-coding-models plain-text auto-migrated as nvidia key on first run
- *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY
- *   - Models loaded from sources.js — 53 models across NIM, Groq, Cerebras
+ *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, HUGGINGFACE_API_KEY/HF_TOKEN, REPLICATE_API_TOKEN, DEEPINFRA_API_KEY/DEEPINFRA_TOKEN, FIREWORKS_API_KEY, etc.
+ *   - Models loaded from sources.js — all provider/model definitions are centralized there
  *   - OpenCode config: ~/.config/opencode/opencode.json
  *   - OpenClaw config: ~/.openclaw/openclaw.json
  *   - Ping timeout: 15s per attempt
@@ -488,7 +488,7 @@ function runUpdate(latestVersion) {
 
 // ─── First-run wizard ─────────────────────────────────────────────────────────
 // 📖 Shown when NO provider has a key configured yet.
-// 📖 Steps through all 3 providers sequentially — each is optional (Enter to skip).
+// 📖 Steps through all configured providers sequentially — each is optional (Enter to skip).
 // 📖 At least one key must be entered to proceed. Keys saved to ~/.free-coding-models.json.
 // 📖 Returns the nvidia key (or null) for backward-compat with the rest of main().
 async function promptApiKey(config) {
@@ -497,81 +497,17 @@ async function promptApiKey(config) {
   console.log(chalk.dim('  Enter keys for any provider you want to use. Press Enter to skip one.'))
   console.log()
 
-  // 📖 Provider definitions: label, key field, url for getting the key
-  const providers = [
-    {
-      key: 'nvidia',
-      label: 'NVIDIA NIM',
-      color: chalk.rgb(118, 185, 0),
-      url: 'https://build.nvidia.com',
-      hint: 'Profile → API Keys → Generate',
-      prefix: 'nvapi-',
-    },
-    {
-      key: 'groq',
-      label: 'Groq',
-      color: chalk.rgb(249, 103, 20),
-      url: 'https://console.groq.com/keys',
-      hint: 'API Keys → Create API Key',
-      prefix: 'gsk_',
-    },
-    {
-      key: 'cerebras',
-      label: 'Cerebras',
-      color: chalk.rgb(0, 180, 255),
-      url: 'https://cloud.cerebras.ai',
-      hint: 'API Keys → Create',
-      prefix: 'csk_ / cauth_',
-    },
-    {
-      key: 'sambanova',
-      label: 'SambaNova',
-      color: chalk.rgb(255, 165, 0),
-      url: 'https://cloud.sambanova.ai/apis',
-      hint: 'API Keys → Create ($5 free trial, 3 months)',
-      prefix: 'sn-',
-    },
-    {
-      key: 'openrouter',
-      label: 'OpenRouter',
-      color: chalk.rgb(120, 80, 255),
-      url: 'https://openrouter.ai/settings/keys',
-      hint: 'API Keys → Create key (50 free req/day, shared quota)',
-      prefix: 'sk-or-',
-    },
-    {
-      key: 'codestral',
-      label: 'Mistral Codestral',
-      color: chalk.rgb(255, 100, 100),
-      url: 'https://codestral.mistral.ai',
-      hint: 'API Keys → Create key (30 req/min, 2000/day — phone required)',
-      prefix: 'csk-',
-    },
-    {
-      key: 'hyperbolic',
-      label: 'Hyperbolic',
-      color: chalk.rgb(0, 200, 150),
-      url: 'https://app.hyperbolic.ai/settings',
-      hint: 'Settings → API Keys ($1 free trial)',
-      prefix: 'eyJ',
-    },
-    {
-      key: 'scaleway',
-      label: 'Scaleway',
-      color: chalk.rgb(130, 0, 250),
-      url: 'https://console.scaleway.com/iam/api-keys',
-      hint: 'IAM → API Keys (1M free tokens)',
-      prefix: 'scw-',
-    },
-    {
-      key: 'googleai',
-      label: 'Google AI Studio',
-      color: chalk.rgb(66, 133, 244),
-      url: 'https://aistudio.google.com/apikey',
-      hint: 'Get API key (free Gemma models, 14.4K req/day)',
-      prefix: 'AIza',
-    },
-  ]
+  // 📖 Build providers from sources to keep setup in sync with actual supported providers.
+  const providers = Object.keys(sources).map((key) => {
+    const meta = PROVIDER_METADATA[key] || {}
+    return {
+      key,
+      label: meta.label || sources[key]?.name || key,
+      color: meta.color || chalk.white,
+      url: meta.signupUrl || 'https://example.com',
+      hint: meta.signupHint || 'Create API key',
+    }
+  })
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 
@@ -1123,23 +1059,50 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 // ─── HTTP ping ────────────────────────────────────────────────────────────────
 
 // 📖 ping: Send a single chat completion request to measure model availability and latency.
-// 📖 url param is the provider's endpoint URL — differs per provider (NIM, Groq, Cerebras).
+// 📖 providerKey and url determine provider-specific request format.
 // 📖 apiKey can be null — in that case no Authorization header is sent.
 // 📖 A 401 response still tells us the server is UP and gives us real latency.
-async function ping(apiKey, modelId, url) {
+function buildPingRequest(apiKey, modelId, providerKey, url) {
+  if (providerKey === 'replicate') {
+    // 📖 Replicate uses /v1/predictions with a different payload than OpenAI chat-completions.
+    const replicateHeaders = { 'Content-Type': 'application/json', Prefer: 'wait=4' }
+    if (apiKey) replicateHeaders.Authorization = `Token ${apiKey}`
+    return {
+      url,
+      headers: replicateHeaders,
+      body: { version: modelId, input: { prompt: 'hi' } },
+    }
+  }
+
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  if (providerKey === 'openrouter') {
+    // 📖 OpenRouter recommends optional app identification headers.
+    headers['HTTP-Referer'] = 'https://github.com/vava-nessa/free-coding-models'
+    headers['X-Title'] = 'free-coding-models'
+  }
+
+  return {
+    url,
+    headers,
+    body: { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 },
+  }
+}
+
+async function ping(apiKey, modelId, providerKey, url) {
   const ctrl  = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT)
   const t0    = performance.now()
   try {
-    // 📖 Only attach Authorization header when a key is available
-    const headers = { 'Content-Type': 'application/json' }
-    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
-    const resp = await fetch(url, {
+    const req = buildPingRequest(apiKey, modelId, providerKey, url)
+    const resp = await fetch(req.url, {
       method: 'POST', signal: ctrl.signal,
-      headers,
-      body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
+      headers: req.headers,
+      body: JSON.stringify(req.body),
     })
-    return { code: String(resp.status), ms: Math.round(performance.now() - t0) }
+    // 📖 Normalize all HTTP 2xx statuses to "200" so existing verdict/avg logic still works.
+    const code = resp.status >= 200 && resp.status < 300 ? '200' : String(resp.status)
+    return { code, ms: Math.round(performance.now() - t0) }
   } catch (err) {
     const isTimeout = err.name === 'AbortError'
     return {
@@ -1180,10 +1143,110 @@ const ENV_VAR_NAMES = {
   cerebras:   'CEREBRAS_API_KEY',
   sambanova:  'SAMBANOVA_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
+  huggingface:'HUGGINGFACE_API_KEY',
+  replicate:  'REPLICATE_API_TOKEN',
+  deepinfra:  'DEEPINFRA_API_KEY',
+  fireworks:  'FIREWORKS_API_KEY',
   codestral:  'CODESTRAL_API_KEY',
   hyperbolic: 'HYPERBOLIC_API_KEY',
   scaleway:   'SCALEWAY_API_KEY',
   googleai:   'GOOGLE_API_KEY',
+}
+
+// 📖 Provider metadata used by the setup wizard and Settings details panel.
+// 📖 Keeps signup links + rate limits centralized so UI stays consistent.
+const PROVIDER_METADATA = {
+  nvidia: {
+    label: 'NVIDIA NIM',
+    color: chalk.rgb(118, 185, 0),
+    signupUrl: 'https://build.nvidia.com',
+    signupHint: 'Profile → API Keys → Generate',
+    rateLimits: 'Free tier (provider quota by model)',
+  },
+  groq: {
+    label: 'Groq',
+    color: chalk.rgb(249, 103, 20),
+    signupUrl: 'https://console.groq.com/keys',
+    signupHint: 'API Keys → Create API Key',
+    rateLimits: 'Free dev tier (provider quota)',
+  },
+  cerebras: {
+    label: 'Cerebras',
+    color: chalk.rgb(0, 180, 255),
+    signupUrl: 'https://cloud.cerebras.ai',
+    signupHint: 'API Keys → Create',
+    rateLimits: 'Free dev tier (provider quota)',
+  },
+  sambanova: {
+    label: 'SambaNova',
+    color: chalk.rgb(255, 165, 0),
+    signupUrl: 'https://sambanova.ai/developers',
+    signupHint: 'Developers portal → Create API key',
+    rateLimits: 'Dev tier generous quota',
+  },
+  openrouter: {
+    label: 'OpenRouter',
+    color: chalk.rgb(120, 80, 255),
+    signupUrl: 'https://openrouter.ai/keys',
+    signupHint: 'API Keys → Create',
+    rateLimits: '50 req/day, 20/min (:free shared quota)',
+  },
+  huggingface: {
+    label: 'Hugging Face Inference',
+    color: chalk.rgb(255, 182, 0),
+    signupUrl: 'https://huggingface.co/settings/tokens',
+    signupHint: 'Settings → Access Tokens',
+    rateLimits: 'Free monthly credits (~$0.10)',
+  },
+  replicate: {
+    label: 'Replicate',
+    color: chalk.rgb(120, 160, 255),
+    signupUrl: 'https://replicate.com/account/api-tokens',
+    signupHint: 'Account → API Tokens',
+    rateLimits: 'Developer free quota',
+  },
+  deepinfra: {
+    label: 'DeepInfra',
+    color: chalk.rgb(0, 180, 140),
+    signupUrl: 'https://deepinfra.com/login',
+    signupHint: 'Login → API keys',
+    rateLimits: 'Free dev tier (low-latency quota)',
+  },
+  fireworks: {
+    label: 'Fireworks AI',
+    color: chalk.rgb(255, 80, 50),
+    signupUrl: 'https://fireworks.ai',
+    signupHint: 'Create account → Generate API key',
+    rateLimits: '$1 free credits (new dev accounts)',
+  },
+  codestral: {
+    label: 'Mistral Codestral',
+    color: chalk.rgb(255, 100, 100),
+    signupUrl: 'https://codestral.mistral.ai',
+    signupHint: 'API Keys → Create',
+    rateLimits: '30 req/min, 2000/day',
+  },
+  hyperbolic: {
+    label: 'Hyperbolic',
+    color: chalk.rgb(0, 200, 150),
+    signupUrl: 'https://app.hyperbolic.ai/settings',
+    signupHint: 'Settings → API Keys',
+    rateLimits: '$1 free trial credits',
+  },
+  scaleway: {
+    label: 'Scaleway',
+    color: chalk.rgb(130, 0, 250),
+    signupUrl: 'https://console.scaleway.com/iam/api-keys',
+    signupHint: 'IAM → API Keys',
+    rateLimits: '1M free tokens',
+  },
+  googleai: {
+    label: 'Google AI Studio',
+    color: chalk.rgb(66, 133, 244),
+    signupUrl: 'https://aistudio.google.com/apikey',
+    signupHint: 'Get API key',
+    rateLimits: '14.4K req/day, 30/min',
+  },
 }
 
 // 📖 OpenCode config location varies by platform
@@ -1330,7 +1393,7 @@ async function spawnOpenCode(args, providerKey, fcmConfig) {
 
 // ─── Start OpenCode ────────────────────────────────────────────────────────────
 // 📖 Launches OpenCode with the selected model.
-// 📖 Handles all 3 providers: nvidia (needs custom provider config), groq & cerebras (built-in in OpenCode).
+// 📖 Handles nvidia + all OpenAI-compatible providers defined in sources.js.
 // 📖 For nvidia: checks if NIM is configured, sets provider.models entry, spawns with nvidia/model-id.
 // 📖 For groq/cerebras: OpenCode has built-in support -- just sets model in config and spawns.
 // 📖 Model format: { modelId, label, tier, providerKey }
@@ -1418,6 +1481,14 @@ After installation, you can use: opencode --model ${modelRef}`
       await spawnOpenCode([], providerKey, fcmConfig)
     }
   } else {
+    if (providerKey === 'replicate') {
+      console.log(chalk.yellow('  ⚠ Replicate models are monitor-only for now in OpenCode mode.'))
+      console.log(chalk.dim('    Reason: Replicate uses /v1/predictions instead of OpenAI chat-completions.'))
+      console.log(chalk.dim('    You can still benchmark this model in the TUI and use other providers for OpenCode launch.'))
+      console.log()
+      return
+    }
+
     // 📖 Groq: built-in OpenCode provider -- needs provider block with apiKey in opencode.json.
     // 📖 Cerebras: NOT built-in -- needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
     // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
@@ -1471,6 +1542,36 @@ After installation, you can use: opencode --model ${modelRef}`
           options: {
             baseURL: 'https://openrouter.ai/api/v1',
             apiKey: '{env:OPENROUTER_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'huggingface') {
+        config.provider.huggingface = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Hugging Face Inference',
+          options: {
+            baseURL: 'https://router.huggingface.co/v1',
+            apiKey: '{env:HUGGINGFACE_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'deepinfra') {
+        config.provider.deepinfra = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'DeepInfra',
+          options: {
+            baseURL: 'https://api.deepinfra.com/v1/openai',
+            apiKey: '{env:DEEPINFRA_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'fireworks') {
+        config.provider.fireworks = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Fireworks AI',
+          options: {
+            baseURL: 'https://api.fireworks.ai/inference/v1',
+            apiKey: '{env:FIREWORKS_API_KEY}'
           },
           models: {}
         }
@@ -1549,7 +1650,7 @@ After installation, you can use: opencode --model ${modelRef}`
 // ─── Start OpenCode Desktop ─────────────────────────────────────────────────────
 // 📖 startOpenCodeDesktop: Same config logic as startOpenCode, but opens the Desktop app.
 // 📖 OpenCode Desktop shares config at the same location as CLI.
-// 📖 Handles all 3 providers: nvidia (needs custom provider config), groq & cerebras (built-in).
+// 📖 Handles nvidia + all OpenAI-compatible providers defined in sources.js.
 // 📖 No need to wait for exit — Desktop app stays open independently.
 async function startOpenCodeDesktop(model, fcmConfig) {
   const providerKey = model.providerKey ?? 'nvidia'
@@ -1650,6 +1751,14 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
       console.log()
     }
   } else {
+    if (providerKey === 'replicate') {
+      console.log(chalk.yellow('  ⚠ Replicate models are monitor-only for now in OpenCode Desktop mode.'))
+      console.log(chalk.dim('    Reason: Replicate uses /v1/predictions instead of OpenAI chat-completions.'))
+      console.log(chalk.dim('    You can still benchmark this model in the TUI and use other providers for Desktop launch.'))
+      console.log()
+      return
+    }
+
     // 📖 Groq: built-in OpenCode provider — needs provider block with apiKey in opencode.json.
     // 📖 Cerebras: NOT built-in — needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
     // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
@@ -1701,6 +1810,36 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
           options: {
             baseURL: 'https://openrouter.ai/api/v1',
             apiKey: '{env:OPENROUTER_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'huggingface') {
+        config.provider.huggingface = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Hugging Face Inference',
+          options: {
+            baseURL: 'https://router.huggingface.co/v1',
+            apiKey: '{env:HUGGINGFACE_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'deepinfra') {
+        config.provider.deepinfra = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'DeepInfra',
+          options: {
+            baseURL: 'https://api.deepinfra.com/v1/openai',
+            apiKey: '{env:DEEPINFRA_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'fireworks') {
+        config.provider.fireworks = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Fireworks AI',
+          options: {
+            baseURL: 'https://api.fireworks.ai/inference/v1',
+            apiKey: '{env:FIREWORKS_API_KEY}'
           },
           models: {}
         }
@@ -1915,7 +2054,7 @@ async function runFiableMode(config) {
   const pingPromises = results.map(r => {
     const rApiKey = getApiKey(config, r.providerKey)
     const url = sources[r.providerKey]?.url
-    return ping(rApiKey, r.modelId, url).then(({ code, ms }) => {
+    return ping(rApiKey, r.modelId, r.providerKey, url).then(({ code, ms }) => {
       r.pings.push({ ms, code })
       if (code === '200') {
         r.status = 'up'
@@ -2172,12 +2311,14 @@ async function main() {
     lines.push('')
     lines.push(`  ${chalk.bold('⚙  Settings')}  ${chalk.dim('— free-coding-models v' + LOCAL_VERSION)}`)
     lines.push('')
-    lines.push(`  ${chalk.bold('Providers')}`)
+    lines.push(`  ${chalk.bold('🧩 Providers')}`)
+    lines.push(`  ${chalk.dim('  ' + '─'.repeat(112))}`)
     lines.push('')
 
     for (let i = 0; i < providerKeys.length; i++) {
       const pk = providerKeys[i]
       const src = sources[pk]
+      const meta = PROVIDER_METADATA[pk] || {}
       const isCursor = i === state.settingsCursor
       const enabled = isProviderEnabled(state.config, pk)
       const keyVal = state.config.apiKeys?.[pk] ?? ''
@@ -2201,22 +2342,37 @@ async function main() {
       if (testResult === 'pending') testBadge = chalk.yellow('[Testing…]')
       else if (testResult === 'ok')   testBadge = chalk.greenBright('[Test ✅]')
       else if (testResult === 'fail') testBadge = chalk.red('[Test ❌]')
+      const rateSummary = chalk.dim((meta.rateLimits || 'No limit info').slice(0, 36))
 
-      const enabledBadge = enabled ? chalk.greenBright('✅') : chalk.dim('⬜')
-      const providerName = chalk.bold(src.name.padEnd(10))
+      const enabledBadge = enabled ? chalk.greenBright('✅') : chalk.redBright('❌')
+      const providerName = chalk.bold((meta.label || src.name || pk).slice(0, 22).padEnd(22))
       const bullet = isCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
 
-      const row = `${bullet}[ ${enabledBadge} ] ${providerName}  ${keyDisplay.padEnd(30)}  ${testBadge}`
+      const row = `${bullet}[ ${enabledBadge} ] ${providerName}  ${keyDisplay.padEnd(30)}  ${testBadge}  ${rateSummary}`
       lines.push(isCursor ? chalk.bgRgb(30, 30, 60)(row) : row)
     }
 
     lines.push('')
-    lines.push(`  ${chalk.bold('Analytics')}`)
+    const selectedProviderKey = providerKeys[Math.min(state.settingsCursor, providerKeys.length - 1)]
+    const selectedSource = sources[selectedProviderKey]
+    const selectedMeta = PROVIDER_METADATA[selectedProviderKey] || {}
+    if (selectedSource && state.settingsCursor < telemetryRowIdx) {
+      const selectedKey = getApiKey(state.config, selectedProviderKey)
+      const setupStatus = selectedKey ? chalk.green('API key detected ✅') : chalk.yellow('API key missing ⚠')
+      lines.push(`  ${chalk.bold('Setup Instructions')} — ${selectedMeta.label || selectedSource.name || selectedProviderKey}`)
+      lines.push(chalk.dim(`  1) Create a ${selectedMeta.label || selectedSource.name} account: ${selectedMeta.signupUrl || 'signup link missing'}`))
+      lines.push(chalk.dim(`  2) ${selectedMeta.signupHint || 'Generate an API key and paste it with Enter on this row'}`))
+      lines.push(chalk.dim(`  3) Press ${chalk.yellow('T')} to test your key. Status: ${setupStatus}`))
+      lines.push('')
+    }
+
+    lines.push(`  ${chalk.bold('📊 Analytics')}`)
+    lines.push(`  ${chalk.dim('  ' + '─'.repeat(112))}`)
     lines.push('')
 
     const telemetryCursor = state.settingsCursor === telemetryRowIdx
     const telemetryEnabled = state.config.telemetry?.enabled === true
-    const telemetryStatus = telemetryEnabled ? chalk.greenBright('✅ Enabled') : chalk.dim('⬜ Disabled')
+    const telemetryStatus = telemetryEnabled ? chalk.greenBright('✅ Enabled') : chalk.redBright('❌ Disabled')
     const telemetryRowBullet = telemetryCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
     const telemetryEnv = parseTelemetryEnv(process.env.FREE_CODING_MODELS_TELEMETRY)
     const telemetrySource = telemetryEnv === null
@@ -2288,7 +2444,7 @@ async function main() {
     if (!testModel) { state.settingsTestResults[providerKey] = 'fail'; return }
 
     state.settingsTestResults[providerKey] = 'pending'
-    const { code } = await ping(testKey, testModel, src.url)
+    const { code } = await ping(testKey, testModel, providerKey, src.url)
     state.settingsTestResults[providerKey] = code === '200' ? 'ok' : 'fail'
   }
 
@@ -2627,7 +2783,7 @@ async function main() {
   const pingModel = async (r) => {
     const providerApiKey = getApiKey(state.config, r.providerKey) ?? null
     const providerUrl = sources[r.providerKey]?.url ?? sources.nvidia.url
-    const { code, ms } = await ping(providerApiKey, r.modelId, providerUrl)
+    const { code, ms } = await ping(providerApiKey, r.modelId, r.providerKey, providerUrl)
 
     // 📖 Store ping result as object with ms and code
     // 📖 ms = actual response time (even for errors like 429)
