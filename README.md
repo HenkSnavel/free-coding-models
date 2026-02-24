@@ -347,6 +347,19 @@ Current tier filter is shown in the header badge (e.g., `[Tier S]`)
    - Sets your selected model as default in `~/.config/opencode/opencode.json`
    - Launches OpenCode with the model ready to use
 
+### tmux sub-agent panes
+
+When launched from an existing `tmux` session, `free-coding-models` now auto-adds an OpenCode `--port` argument so OpenCode/oh-my-opencode can spawn sub-agents in panes.
+
+- Priority 1: reuse `OPENCODE_PORT` if it is valid and free
+- Priority 2: auto-pick the first free port in `4096-5095`
+
+You can force a specific port:
+
+```bash
+OPENCODE_PORT=4098 free-coding-models --opencode
+```
+
 ### Manual OpenCode Setup (Optional)
 
 Create or edit `~/.config/opencode/opencode.json`:

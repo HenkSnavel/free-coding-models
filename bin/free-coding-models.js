@@ -41,6 +41,7 @@
  *   - `getUptime`: Calculate uptime percentage from ping history
  *   - `sortResults`: Sort models by various columns
  *   - `checkNvidiaNimConfig`: Check if NVIDIA NIM provider is configured in OpenCode
+ *   - `isTcpPortAvailable` / `resolveOpenCodeTmuxPort`: Pick a safe OpenCode port when running in tmux
  *   - `startOpenCode`: Launch OpenCode CLI with selected model (configures if needed)
  *   - `startOpenCodeDesktop`: Set model in shared config & open OpenCode Desktop app
  *   - `loadOpenClawConfig` / `saveOpenClawConfig`: Manage ~/.openclaw/openclaw.json
@@ -86,6 +87,7 @@ import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from
 import { randomUUID } from 'crypto'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
+import { createServer } from 'net'
 import { MODELS, sources } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
 import { getAvg, getVerdict, getUptime, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
@@ -1193,6 +1195,45 @@ const OPENCODE_CONFIG = isWindows
 
 // 📖 Fallback to .config on Windows if AppData doesn't exist
 const OPENCODE_CONFIG_FALLBACK = join(homedir(), '.config', 'opencode', 'opencode.json')
+const OPENCODE_PORT_RANGE_START = 4096
+const OPENCODE_PORT_RANGE_END = 5096
+
+// 📖 isTcpPortAvailable: checks if a local TCP port is free for OpenCode.
+// 📖 Used to avoid tmux sub-agent port conflicts when multiple projects run in parallel.
+function isTcpPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = createServer()
+    server.once('error', () => resolve(false))
+    server.once('listening', () => {
+      server.close(() => resolve(true))
+    })
+    server.listen(port)
+  })
+}
+
+// 📖 resolveOpenCodeTmuxPort: selects a safe port for OpenCode when inside tmux.
+// 📖 Priority:
+// 📖 1) OPENCODE_PORT from env (if valid and available)
+// 📖 2) First available port in 4096-5095
+async function resolveOpenCodeTmuxPort() {
+  const envPortRaw = process.env.OPENCODE_PORT
+  const envPort = Number.parseInt(envPortRaw || '', 10)
+
+  if (Number.isInteger(envPort) && envPort > 0 && envPort <= 65535) {
+    if (await isTcpPortAvailable(envPort)) {
+      return { port: envPort, source: 'env' }
+    }
+    console.log(chalk.yellow(`  ⚠ OPENCODE_PORT=${envPort} is already in use; selecting another port for this run.`))
+  }
+
+  for (let port = OPENCODE_PORT_RANGE_START; port < OPENCODE_PORT_RANGE_END; port++) {
+    if (await isTcpPortAvailable(port)) {
+      return { port, source: 'auto' }
+    }
+  }
+
+  return null
+}
 
 function getOpenCodeConfigPath() {
   if (existsSync(OPENCODE_CONFIG)) return OPENCODE_CONFIG
@@ -1243,10 +1284,30 @@ async function spawnOpenCode(args, providerKey, fcmConfig) {
   const envVarName = ENV_VAR_NAMES[providerKey]
   const resolvedKey = getApiKey(fcmConfig, providerKey)
   const childEnv = { ...process.env }
+  const finalArgs = [...args]
+  const hasExplicitPortArg = finalArgs.includes('--port')
   if (envVarName && resolvedKey) childEnv[envVarName] = resolvedKey
 
+  // 📖 In tmux, OpenCode sub-agents need a listening port to open extra panes.
+  // 📖 We auto-pick one if the user did not provide --port explicitly.
+  if (process.env.TMUX && !hasExplicitPortArg) {
+    const tmuxPort = await resolveOpenCodeTmuxPort()
+    if (tmuxPort) {
+      const portValue = String(tmuxPort.port)
+      childEnv.OPENCODE_PORT = portValue
+      finalArgs.push('--port', portValue)
+      if (tmuxPort.source === 'env') {
+        console.log(chalk.dim(`  📺 tmux detected — using OPENCODE_PORT=${portValue}.`))
+      } else {
+        console.log(chalk.dim(`  📺 tmux detected — using OpenCode port ${portValue} for sub-agent panes.`))
+      }
+    } else {
+      console.log(chalk.yellow(`  ⚠ tmux detected but no free OpenCode port found in ${OPENCODE_PORT_RANGE_START}-${OPENCODE_PORT_RANGE_END - 1}; launching without --port.`))
+    }
+  }
+
   const { spawn } = await import('child_process')
-  const child = spawn('opencode', args, {
+  const child = spawn('opencode', finalArgs, {
     stdio: 'inherit',
     shell: true,
     detached: false,

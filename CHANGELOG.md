@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.64
+
+### Changed
+
+- OpenCode launch now detects `tmux` and auto-injects `--port` (`OPENCODE_PORT` if free, otherwise first available `4096-5095`) so sub-agent panes work reliably.
+
+---
+
 ## 0.1.63
 
 ### Changed
