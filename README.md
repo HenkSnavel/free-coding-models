@@ -64,6 +64,7 @@
 - **📶 Status indicators** — UP ✅ · No Key 🔑 · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
 - **🔍 Keyless latency** — Models are pinged even without an API key — a `🔑 NO KEY` status confirms the server is reachable with real latency shown, so you can compare providers before committing to a key
 - **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
+- **📊 Privacy-first analytics (optional)** — anonymous PostHog events with explicit consent + opt-out
 
 ---
 
@@ -85,7 +86,7 @@ Before using `free-coding-models`, make sure you have:
 3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
 4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** You don't need all four providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
+> 💡 **Tip:** You don't need all nine providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
 
 ---
 
@@ -129,6 +130,9 @@ free-coding-models --best
 
 # Analyze for 10 seconds and output the most reliable model
 free-coding-models --fiable
+
+# Disable anonymous analytics for this run
+free-coding-models --no-telemetry
 
 # Filter models by tier letter
 free-coding-models --tier S          # S+ and S only
@@ -199,7 +203,7 @@ Setup wizard (first run — walks through all 9 providers):
   You can add or change keys anytime with the P key in the TUI.
 ```
 
-You don't need all four — skip any provider by pressing Enter. At least one key is required.
+You don't need all nine — skip any provider by pressing Enter. At least one key is required.
 
 ### Adding or changing keys later
 
@@ -225,6 +229,8 @@ Press **`P`** to open the Settings screen at any time:
 
 Keys are saved to `~/.free-coding-models.json` (permissions `0600`).
 
+Analytics toggle is in the same Settings screen (`P`) as a dedicated row (toggle with Enter or Space).
+
 ### Environment variable overrides
 
 Env vars always take priority over the config file:
@@ -233,7 +239,18 @@ Env vars always take priority over the config file:
 NVIDIA_API_KEY=nvapi-xxx free-coding-models
 GROQ_API_KEY=gsk_xxx free-coding-models
 CEREBRAS_API_KEY=csk_xxx free-coding-models
+FREE_CODING_MODELS_TELEMETRY=0 free-coding-models
 ```
+
+Telemetry env vars:
+
+- `FREE_CODING_MODELS_TELEMETRY=0|1` — force disable/enable analytics
+- `FREE_CODING_MODELS_POSTHOG_KEY` — PostHog project API key (required to send events)
+- `FREE_CODING_MODELS_POSTHOG_HOST` — optional ingest host (`https://eu.i.posthog.com` default)
+- `FREE_CODING_MODELS_TELEMETRY_DEBUG=1` — optional stderr debug logs for telemetry troubleshooting
+
+On first run (or when consent policy changes), the CLI asks users to accept or decline anonymous analytics.
+When enabled, telemetry events include: event name, app version, selected mode, system (`macOS`/`Windows`/`Linux`), and terminal family (`Terminal.app`, `iTerm2`, `kitty`, `Warp`, `WezTerm`, etc., with generic fallback from `TERM_PROGRAM`/`TERM`).
 
 ### Get your free API keys
 
@@ -500,11 +517,14 @@ This script:
 
 **Environment variables (override config file):**
 
-| Variable | Provider |
-|----------|----------|
-| `NVIDIA_API_KEY` | NVIDIA NIM |
-| `GROQ_API_KEY` | Groq |
-| `CEREBRAS_API_KEY` | Cerebras |
+| Variable | Description |
+|----------|-------------|
+| `NVIDIA_API_KEY` | NVIDIA NIM key |
+| `GROQ_API_KEY` | Groq key |
+| `CEREBRAS_API_KEY` | Cerebras key |
+| `FREE_CODING_MODELS_TELEMETRY` | `0` disables analytics, `1` enables analytics |
+| `FREE_CODING_MODELS_POSTHOG_KEY` | PostHog project API key used for anonymous event capture |
+| `FREE_CODING_MODELS_POSTHOG_HOST` | Optional PostHog ingest host (`https://eu.i.posthog.com` default) |
 
 **Config file:** `~/.free-coding-models.json` (created automatically, permissions `0600`)
 
@@ -519,6 +539,11 @@ This script:
     "nvidia":   { "enabled": true },
     "groq":     { "enabled": true },
     "cerebras": { "enabled": true }
+  },
+  "telemetry": {
+    "enabled": true,
+    "consentVersion": 1,
+    "anonymousId": "anon_550e8400-e29b-41d4-a716-446655440000"
   }
 }
 ```
@@ -538,6 +563,7 @@ This script:
 | `--openclaw` | OpenClaw mode — Enter sets selected model as default in OpenClaw |
 | `--best` | Show only top-tier models (A+, S, S+) |
 | `--fiable` | Analyze 10 seconds, output the most reliable model as `provider/model_id` |
+| `--no-telemetry` | Disable anonymous analytics for this run |
 | `--tier S` | Show only S+ and S tier models |
 | `--tier A` | Show only A+, A, A- tier models |
 | `--tier B` | Show only B+, B tier models |
@@ -549,15 +575,15 @@ This script:
 - **R/Y/O/M/L/A/S/N/H/V/U** — Sort by Rank/Tier/Origin/Model/LatestPing/Avg/SWE/Ctx/Health/Verdict/Uptime
 - **T** — Cycle tier filter (All → S+ → S → A+ → A → A- → B+ → B → C → All)
 - **Z** — Cycle mode (OpenCode CLI → OpenCode Desktop → OpenClaw)
-- **P** — Open Settings (manage API keys, enable/disable providers)
+- **P** — Open Settings (manage API keys, provider toggles, analytics toggle)
 - **W** — Decrease ping interval (faster pings)
 - **X** — Increase ping interval (slower pings)
 - **Ctrl+C** — Exit
 
 **Keyboard shortcuts (Settings screen — `P` key):**
-- **↑↓** — Navigate providers
-- **Enter** — Edit API key inline (type key, Enter to save, Esc to cancel)
-- **Space** — Toggle provider enabled/disabled
+- **↑↓** — Navigate providers and analytics row
+- **Enter** — Edit API key inline, or toggle analytics on analytics row
+- **Space** — Toggle provider enabled/disabled, or toggle analytics on analytics row
 - **T** — Test current provider's API key (fires a live ping)
 - **Esc** — Close settings and return to main TUI
 

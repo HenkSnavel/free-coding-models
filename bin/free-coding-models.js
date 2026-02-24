@@ -27,6 +27,11 @@
  *
  *   → Functions:
  *   - `loadConfig` / `saveConfig` / `getApiKey`: Multi-provider JSON config via lib/config.js
+ *   - `promptTelemetryConsent`: First-run consent flow for anonymous analytics
+ *   - `getTelemetryDistinctId`: Generate/reuse a stable anonymous ID for telemetry
+ *   - `getTelemetryTerminal`: Infer terminal family (Terminal.app, iTerm2, kitty, etc.)
+ *   - `isTelemetryDebugEnabled` / `telemetryDebug`: Optional runtime telemetry diagnostics via env
+ *   - `sendUsageTelemetry`: Fire-and-forget anonymous app-start event
  *   - `promptApiKey`: Interactive wizard for first-time NVIDIA API key setup
  *   - `promptModeSelection`: Startup menu to choose OpenCode vs OpenClaw
  *   - `ping`: Perform HTTP request to NIM endpoint with timeout handling
@@ -67,6 +72,7 @@
  *   - --openclaw: OpenClaw mode (set selected model as default in OpenClaw)
  *   - --best: Show only top-tier models (A+, S, S+)
  *   - --fiable: Analyze 10s and output the most reliable model
+ *   - --no-telemetry: Disable anonymous usage analytics for this run
  *   - --tier S/A/B/C: Filter models by tier letter (S=S+/S, A=A+/A/A-, B=B+/B, C=C)
  *
  *   @see {@link https://build.nvidia.com} NVIDIA API key generation
@@ -77,6 +83,7 @@
 import chalk from 'chalk'
 import { createRequire } from 'module'
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { MODELS, sources } from '../sources.js'
@@ -90,6 +97,322 @@ const readline = require('readline')
 // ─── Version check ────────────────────────────────────────────────────────────
 const pkg = require('../package.json')
 const LOCAL_VERSION = pkg.version
+const TELEMETRY_CONSENT_VERSION = 1
+const TELEMETRY_TIMEOUT = 1_200
+const POSTHOG_CAPTURE_PATH = '/i/v0/e/'
+const POSTHOG_DEFAULT_HOST = 'https://eu.i.posthog.com'
+// 📖 Consent ASCII banner shown before telemetry choice to make first-run intent explicit.
+const TELEMETRY_CONSENT_ASCII = [
+  '███████ ██████  ███████ ███████        ██████  ██████  ██████  ██ ███    ██  ██████        ███    ███  ██████  ██████  ███████ ██      ███████',
+  '██      ██   ██ ██      ██            ██      ██    ██ ██   ██ ██ ████   ██ ██             ████  ████ ██    ██ ██   ██ ██      ██      ██',
+  '█████   ██████  █████   █████   █████ ██      ██    ██ ██   ██ ██ ██ ██  ██ ██   ███ █████ ██ ████ ██ ██    ██ ██   ██ █████   ██      ███████',
+  '██      ██   ██ ██      ██            ██      ██    ██ ██   ██ ██ ██  ██ ██ ██    ██       ██  ██  ██ ██    ██ ██   ██ ██      ██           ██',
+  '██      ██   ██ ███████ ███████        ██████  ██████  ██████  ██ ██   ████  ██████        ██      ██  ██████  ██████  ███████ ███████ ███████',
+  '',
+  '',
+]
+// 📖 Maintainer defaults for global npm telemetry (safe to publish: project key is a public ingest token).
+const POSTHOG_PROJECT_KEY_DEFAULT = 'phc_5P1n8HaLof6nHM0tKJYt4bV5pj2XPb272fLVigwf1YQ'
+const POSTHOG_HOST_DEFAULT = 'https://eu.i.posthog.com'
+
+// 📖 parseTelemetryEnv: Convert env var strings into booleans.
+// 📖 Returns true/false when value is recognized, otherwise null.
+function parseTelemetryEnv(value) {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return null
+}
+
+// 📖 Optional debug switch for telemetry troubleshooting (disabled by default).
+function isTelemetryDebugEnabled() {
+  return parseTelemetryEnv(process.env.FREE_CODING_MODELS_TELEMETRY_DEBUG) === true
+}
+
+// 📖 Writes telemetry debug traces to stderr only when explicitly enabled.
+function telemetryDebug(message, meta = null) {
+  if (!isTelemetryDebugEnabled()) return
+  const prefix = '[telemetry-debug]'
+  if (meta === null) {
+    process.stderr.write(`${prefix} ${message}\n`)
+    return
+  }
+  try {
+    process.stderr.write(`${prefix} ${message} ${JSON.stringify(meta)}\n`)
+  } catch {
+    process.stderr.write(`${prefix} ${message}\n`)
+  }
+}
+
+// 📖 Ensure telemetry config shape exists even on old config files.
+function ensureTelemetryConfig(config) {
+  if (!config.telemetry || typeof config.telemetry !== 'object') {
+    config.telemetry = { enabled: null, consentVersion: 0, anonymousId: null }
+  }
+  if (typeof config.telemetry.enabled !== 'boolean') config.telemetry.enabled = null
+  if (typeof config.telemetry.consentVersion !== 'number') config.telemetry.consentVersion = 0
+  if (typeof config.telemetry.anonymousId !== 'string' || !config.telemetry.anonymousId.trim()) {
+    config.telemetry.anonymousId = null
+  }
+}
+
+// 📖 Create or reuse a persistent anonymous distinct_id for PostHog.
+// 📖 Stored locally in config so one user is stable over time without personal data.
+function getTelemetryDistinctId(config) {
+  ensureTelemetryConfig(config)
+  if (config.telemetry.anonymousId) return config.telemetry.anonymousId
+
+  config.telemetry.anonymousId = `anon_${randomUUID()}`
+  saveConfig(config)
+  return config.telemetry.anonymousId
+}
+
+// 📖 Convert Node platform to human-readable system name for analytics segmentation.
+function getTelemetrySystem() {
+  if (process.platform === 'darwin') return 'macOS'
+  if (process.platform === 'win32') return 'Windows'
+  if (process.platform === 'linux') return 'Linux'
+  return process.platform
+}
+
+// 📖 Infer terminal family from environment hints for coarse usage segmentation.
+// 📖 Never sends full env dumps; only a normalized terminal label is emitted.
+function getTelemetryTerminal() {
+  const termProgramRaw = (process.env.TERM_PROGRAM || '').trim()
+  const termProgram = termProgramRaw.toLowerCase()
+  const term = (process.env.TERM || '').toLowerCase()
+
+  if (termProgram === 'apple_terminal') return 'Terminal.app'
+  if (termProgram === 'iterm.app') return 'iTerm2'
+  if (termProgram === 'warpterminal' || process.env.WARP_IS_LOCAL_SHELL_SESSION) return 'Warp'
+  if (process.env.WT_SESSION) return 'Windows Terminal'
+  if (process.env.KITTY_WINDOW_ID || term.includes('kitty')) return 'kitty'
+  if (process.env.GHOSTTY_RESOURCES_DIR || term.includes('ghostty')) return 'Ghostty'
+  if (process.env.WEZTERM_PANE || termProgram === 'wezterm') return 'WezTerm'
+  if (process.env.KONSOLE_VERSION || termProgram === 'konsole') return 'Konsole'
+  if (process.env.GNOME_TERMINAL_SCREEN || termProgram === 'gnome-terminal') return 'GNOME Terminal'
+  if (process.env.TERMINAL_EMULATOR === 'JetBrains-JediTerm') return 'JetBrains Terminal'
+  if (process.env.TABBY_CONFIG_DIRECTORY || termProgram === 'tabby') return 'Tabby'
+  if (termProgram === 'vscode' || process.env.VSCODE_GIT_IPC_HANDLE) return 'VS Code Terminal'
+  if (process.env.ALACRITTY_SOCKET || term.includes('alacritty') || termProgram === 'alacritty') return 'Alacritty'
+  if (term.includes('foot') || termProgram === 'foot') return 'foot'
+  if (termProgram === 'hyper' || process.env.HYPER) return 'Hyper'
+  if (process.env.TMUX) return 'tmux'
+  if (process.env.STY) return 'screen'
+  // 📖 Generic fallback for many terminals exposing TERM_PROGRAM (e.g., Rio, Contour, etc.).
+  if (termProgramRaw) return termProgramRaw
+  if (term) return term
+
+  return 'unknown'
+}
+
+// 📖 Prompt consent on first run (or when consent schema version changes).
+// 📖 This prompt is skipped when the env var explicitly controls telemetry.
+async function promptTelemetryConsent(config, cliArgs) {
+  if (cliArgs.noTelemetry) return
+
+  const envTelemetry = parseTelemetryEnv(process.env.FREE_CODING_MODELS_TELEMETRY)
+  if (envTelemetry !== null) return
+
+  ensureTelemetryConfig(config)
+  const hasStoredChoice = typeof config.telemetry.enabled === 'boolean'
+  const isConsentCurrent = config.telemetry.consentVersion >= TELEMETRY_CONSENT_VERSION
+  if (hasStoredChoice && isConsentCurrent) return
+
+  // 📖 Non-interactive runs should never hang waiting for input.
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    // 📖 Do not mutate persisted consent in headless runs.
+    // 📖 We simply skip the prompt; runtime telemetry remains governed by env/config precedence.
+    return
+  }
+
+  const options = [
+    { label: 'Accept & Continue', value: true, emoji: '💖🥰💖' },
+    { label: 'Reject and Continue', value: false, emoji: '😢' },
+  ]
+  let selected = 0 // 📖 Default selection is Accept & Continue.
+
+  const accepted = await new Promise((resolve) => {
+    const render = () => {
+      const EL = '\x1b[K'
+      const lines = []
+      for (const asciiLine of TELEMETRY_CONSENT_ASCII) {
+        lines.push(chalk.greenBright(asciiLine))
+      }
+      lines.push(chalk.greenBright(`free-coding-models (v${LOCAL_VERSION})`))
+      lines.push(chalk.greenBright('Welcome ! Would you like to help improve the app and fix bugs by activating PostHog telemetry (anonymous & secure)'))
+      lines.push(chalk.greenBright("anonymous telemetry analytics (we don't collect anything from you)"))
+      lines.push('')
+
+      for (let i = 0; i < options.length; i++) {
+        const isSelected = i === selected
+        const option = options[i]
+        const buttonText = `${option.emoji} ${option.label}`
+
+        let button
+        if (isSelected && option.value) button = chalk.black.bgGreenBright(`  ${buttonText}  `)
+        else if (isSelected && !option.value) button = chalk.black.bgRedBright(`  ${buttonText}  `)
+        else if (option.value) button = chalk.greenBright(`  ${buttonText}  `)
+        else button = chalk.redBright(`  ${buttonText}  `)
+
+        const prefix = isSelected ? chalk.cyan('  ❯ ') : chalk.dim('    ')
+        lines.push(prefix + button)
+      }
+
+      lines.push('')
+      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Select'))
+      lines.push(chalk.dim('  You can change this later in Settings (P).'))
+      lines.push('')
+
+      // 📖 Avoid full-screen clear escape here to prevent title/header offset issues in some terminals.
+      const cleared = lines.map(l => l + EL)
+      const terminalRows = process.stdout.rows || 24
+      const remaining = Math.max(0, terminalRows - cleared.length)
+      for (let i = 0; i < remaining; i++) cleared.push(EL)
+      process.stdout.write('\x1b[H' + cleared.join('\n'))
+    }
+
+    const cleanup = () => {
+      if (process.stdin.isTTY) process.stdin.setRawMode(false)
+      process.stdin.removeListener('keypress', onKeyPress)
+      process.stdin.pause()
+    }
+
+    const onKeyPress = (_str, key) => {
+      if (!key) return
+
+      if (key.ctrl && key.name === 'c') {
+        cleanup()
+        resolve(false)
+        return
+      }
+
+      if ((key.name === 'up' || key.name === 'left') && selected > 0) {
+        selected--
+        render()
+        return
+      }
+
+      if ((key.name === 'down' || key.name === 'right') && selected < options.length - 1) {
+        selected++
+        render()
+        return
+      }
+
+      if (key.name === 'return') {
+        cleanup()
+        resolve(options[selected].value)
+      }
+    }
+
+    readline.emitKeypressEvents(process.stdin)
+    process.stdin.setEncoding('utf8')
+    process.stdin.resume()
+    if (process.stdin.isTTY) process.stdin.setRawMode(true)
+    process.stdin.on('keypress', onKeyPress)
+    render()
+  })
+
+  config.telemetry.enabled = accepted
+  config.telemetry.consentVersion = TELEMETRY_CONSENT_VERSION
+  saveConfig(config)
+
+  console.log()
+  if (accepted) {
+    console.log(chalk.green('  ✅ Analytics enabled. You can disable it later in Settings (P) or with --no-telemetry.'))
+  } else {
+    console.log(chalk.yellow('  Analytics disabled. You can enable it later in Settings (P).'))
+  }
+  console.log()
+}
+
+// 📖 Resolve telemetry effective state with clear precedence:
+// 📖 CLI flag > env var > config file > disabled by default.
+function isTelemetryEnabled(config, cliArgs) {
+  if (cliArgs.noTelemetry) return false
+  const envTelemetry = parseTelemetryEnv(process.env.FREE_CODING_MODELS_TELEMETRY)
+  if (envTelemetry !== null) return envTelemetry
+  ensureTelemetryConfig(config)
+  return config.telemetry.enabled === true
+}
+
+// 📖 Fire-and-forget analytics ping: never blocks UX, never throws.
+async function sendUsageTelemetry(config, cliArgs, payload) {
+  if (!isTelemetryEnabled(config, cliArgs)) {
+    telemetryDebug('skip: telemetry disabled', {
+      cliNoTelemetry: cliArgs.noTelemetry === true,
+      envTelemetry: process.env.FREE_CODING_MODELS_TELEMETRY || null,
+      configEnabled: config?.telemetry?.enabled ?? null,
+    })
+    return
+  }
+
+  const apiKey = (
+    process.env.FREE_CODING_MODELS_POSTHOG_KEY ||
+    process.env.POSTHOG_PROJECT_API_KEY ||
+    POSTHOG_PROJECT_KEY_DEFAULT ||
+    ''
+  ).trim()
+  if (!apiKey) {
+    telemetryDebug('skip: missing api key')
+    return
+  }
+
+  const host = (
+    process.env.FREE_CODING_MODELS_POSTHOG_HOST ||
+    process.env.POSTHOG_HOST ||
+    POSTHOG_HOST_DEFAULT ||
+    POSTHOG_DEFAULT_HOST
+  ).trim().replace(/\/+$/, '')
+  if (!host) {
+    telemetryDebug('skip: missing host')
+    return
+  }
+
+  try {
+    const endpoint = `${host}${POSTHOG_CAPTURE_PATH}`
+    const distinctId = getTelemetryDistinctId(config)
+    const timestamp = typeof payload?.ts === 'string' ? payload.ts : new Date().toISOString()
+    const signal = (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+      ? AbortSignal.timeout(TELEMETRY_TIMEOUT)
+      : undefined
+
+    const posthogBody = {
+      api_key: apiKey,
+      event: payload?.event || 'app_start',
+      distinct_id: distinctId,
+      timestamp,
+      properties: {
+        $process_person_profile: false,
+        source: 'cli',
+        app: 'free-coding-models',
+        version: payload?.version || LOCAL_VERSION,
+        app_version: payload?.version || LOCAL_VERSION,
+        mode: payload?.mode || 'opencode',
+        system: getTelemetrySystem(),
+        terminal: getTelemetryTerminal(),
+      },
+    }
+
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(posthogBody),
+      signal,
+    })
+    telemetryDebug('sent', {
+      event: posthogBody.event,
+      endpoint,
+      mode: posthogBody.properties.mode,
+      system: posthogBody.properties.system,
+      terminal: posthogBody.properties.terminal,
+    })
+  } catch {
+    // 📖 Ignore failures silently: analytics must never break the CLI.
+    telemetryDebug('error: send failed')
+  }
+}
 
 async function checkForUpdate() {
   try {
@@ -440,14 +763,17 @@ const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].
 // 📖 are imported from lib/utils.js for testability
 
 // ─── Viewport calculation ────────────────────────────────────────────────────
+// 📖 Keep these constants in sync with renderTable() fixed shell lines.
+// 📖 If this drifts, model rows overflow and can push the title row out of view.
+const TABLE_HEADER_LINES = 4 // 📖 title, spacer, column headers, separator
+const TABLE_FOOTER_LINES = 6 // 📖 spacer, hints, spacer, credit+contributors, discord, spacer
+const TABLE_FIXED_LINES = TABLE_HEADER_LINES + TABLE_FOOTER_LINES
+
 // 📖 Computes the visible slice of model rows that fits in the terminal.
-// 📖 Fixed lines: 5 header + 5 footer = 10 lines always consumed.
-// 📖 Header: empty, title, empty, column headers, separator (5)
-// 📖 Footer: empty, hints, empty, credit, empty (5)
 // 📖 When scroll indicators are needed, they each consume 1 line from the model budget.
 function calculateViewport(terminalRows, scrollOffset, totalModels) {
   if (terminalRows <= 0) return { startIdx: 0, endIdx: totalModels, hasAbove: false, hasBelow: false }
-  let maxSlots = terminalRows - 10  // 5 header + 5 footer
+  let maxSlots = terminalRows - TABLE_FIXED_LINES
   if (maxSlots < 1) maxSlots = 1
   if (totalModels <= maxSlots) return { startIdx: 0, endIdx: totalModels, hasAbove: false, hasBelow: false }
 
@@ -486,7 +812,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   if (mode === 'openclaw') {
     modeBadge = chalk.bold.rgb(255, 100, 50)(' [🦞 OpenClaw]')
   } else if (mode === 'opencode-desktop') {
-    modeBadge = chalk.bold.rgb(0, 200, 255)(' [🖥 Desktop]')
+    modeBadge = chalk.bold.rgb(0, 200, 255)(' [🖥  Desktop]')
   } else {
     modeBadge = chalk.bold.rgb(0, 200, 255)(' [💻 CLI]')
   }
@@ -529,7 +855,6 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const sorted = sortResults(visibleResults, sortColumn, sortDirection)
 
   const lines = [
-    '',
     `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${modeHint}${tierBadge}${originBadge}   ` +
       chalk.greenBright(`✅ ${up}`) + chalk.dim(' up  ') +
       chalk.yellow(`⏳ ${timeout}`) + chalk.dim(' timeout  ') +
@@ -771,9 +1096,15 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
   lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
   lines.push('')
-  lines.push(chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') + chalk.dim('  •  ') + '⭐ ' + '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Star on GitHub\x1b]8;;\x1b\\')
-  // 📖 GitHub contributors — update when new PRs are merged
-  lines.push(chalk.dim('  🤝 Contributors: ') + chalk.rgb(180, 180, 255)('\x1b]8;;https://github.com/whit3rabbit\x1b\\@whit3rabbit\x1b]8;;\x1b\\'))
+  lines.push(
+    chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') +
+    chalk.dim('  •  ') +
+    '⭐ ' +
+    '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Star on GitHub\x1b]8;;\x1b\\' +
+    chalk.dim('  •  ') +
+    '🤝 ' +
+    '\x1b]8;;https://github.com/vava-nessa/free-coding-models/graphs/contributors\x1b\\Contributors\x1b]8;;\x1b\\'
+  )
   // 📖 Discord invite + BETA warning — always visible at the bottom of the TUI
   lines.push('  💬 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Join our Discord\x1b]8;;\x1b\\') + chalk.dim(' → ') + chalk.cyanBright('https://discord.gg/5MbTnDC3Md') + chalk.dim('  •  ') + chalk.yellow('⚠ BETA TUI') + chalk.dim(' — might crash or have problems'))
   lines.push('')
@@ -1587,6 +1918,7 @@ async function main() {
 
   // 📖 Load JSON config (auto-migrates old plain-text ~/.free-coding-models if needed)
   const config = loadConfig()
+  ensureTelemetryConfig(config)
 
   // 📖 Check if any provider has a key — if not, run the first-time setup wizard
   const hasAnyKey = Object.keys(sources).some(pk => !!getApiKey(config, pk))
@@ -1602,8 +1934,26 @@ async function main() {
     }
   }
 
+  // 📖 Ask analytics consent only when not explicitly controlled by env or CLI flag.
+  await promptTelemetryConsent(config, cliArgs)
+
   // 📖 Backward-compat: keep apiKey var for startOpenClaw() which still needs it
   let apiKey = getApiKey(config, 'nvidia')
+
+  // 📖 Default mode: OpenCode CLI
+  let mode = 'opencode'
+  if (cliArgs.openClawMode) mode = 'openclaw'
+  else if (cliArgs.openCodeDesktopMode) mode = 'opencode-desktop'
+  else if (cliArgs.openCodeMode) mode = 'opencode'
+
+  // 📖 Track app opening early so fast exits are still counted.
+  // 📖 Must run before update checks because npm registry lookups can add startup delay.
+  void sendUsageTelemetry(config, cliArgs, {
+    event: 'app_start',
+    version: LOCAL_VERSION,
+    mode,
+    ts: new Date().toISOString(),
+  })
 
   // 📖 Check for updates in the background
   let latestVersion = null
@@ -1612,9 +1962,6 @@ async function main() {
   } catch {
     // Silently fail - don't block the app if npm registry is unreachable
   }
-
-  // 📖 Default mode: OpenCode CLI
-  let mode = 'opencode'
 
   // 📖 Show update notification menu if a new version is available
   if (latestVersion) {
@@ -1645,6 +1992,7 @@ async function main() {
 
   // 📖 Build results from MODELS — only include enabled providers
   // 📖 Each result gets providerKey so ping() knows which URL + API key to use
+
   let results = MODELS
     .filter(([,,,,,providerKey]) => isProviderEnabled(config, providerKey))
     .map(([modelId, label, tier, sweScore, ctx, providerKey], i) => ({
@@ -1659,7 +2007,7 @@ async function main() {
   // 📖 Called after every cursor move, sort change, and terminal resize.
   const adjustScrollOffset = (st) => {
     const total = st.visibleSorted ? st.visibleSorted.length : st.results.filter(r => !r.hidden).length
-    let maxSlots = st.terminalRows - 10  // 5 header + 5 footer
+    let maxSlots = st.terminalRows - TABLE_FIXED_LINES
     if (maxSlots < 1) maxSlots = 1
     if (total <= maxSlots) { st.scrollOffset = 0; return }
     // Ensure cursor is not above the visible window
@@ -1756,6 +2104,7 @@ async function main() {
   // 📖 Key "T" in settings = test API key for selected provider.
   function renderSettings() {
     const providerKeys = Object.keys(sources)
+    const telemetryRowIdx = providerKeys.length
     const EL = '\x1b[K'
     const lines = []
 
@@ -1801,10 +2150,25 @@ async function main() {
     }
 
     lines.push('')
+    lines.push(`  ${chalk.bold('Analytics')}`)
+    lines.push('')
+
+    const telemetryCursor = state.settingsCursor === telemetryRowIdx
+    const telemetryEnabled = state.config.telemetry?.enabled === true
+    const telemetryStatus = telemetryEnabled ? chalk.greenBright('✅ Enabled') : chalk.dim('⬜ Disabled')
+    const telemetryRowBullet = telemetryCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
+    const telemetryEnv = parseTelemetryEnv(process.env.FREE_CODING_MODELS_TELEMETRY)
+    const telemetrySource = telemetryEnv === null
+      ? chalk.dim('[Config]')
+      : chalk.yellow('[Env override]')
+    const telemetryRow = `${telemetryRowBullet}${chalk.bold('Anonymous usage analytics').padEnd(44)} ${telemetryStatus}  ${telemetrySource}`
+    lines.push(telemetryCursor ? chalk.bgRgb(30, 30, 60)(telemetryRow) : telemetryRow)
+
+    lines.push('')
     if (state.settingsEditMode) {
       lines.push(chalk.dim('  Type API key  •  Enter Save  •  Esc Cancel'))
     } else {
-      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key  •  Space Toggle enabled  •  T Test key  •  Esc Close'))
+      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key / Toggle analytics  •  Space Toggle enabled  •  T Test key  •  Esc Close'))
     }
     lines.push('')
 
@@ -1840,7 +2204,7 @@ async function main() {
     lines.push(`  ${chalk.yellow('W')}  Decrease ping interval (faster)`)
     lines.push(`  ${chalk.yellow('X')}  Increase ping interval (slower)`)
     lines.push(`  ${chalk.yellow('Z')}  Cycle launch mode  ${chalk.dim('(OpenCode CLI → OpenCode Desktop → OpenClaw)')}`)
-    lines.push(`  ${chalk.yellow('P')}  Open settings  ${chalk.dim('(manage API keys per provider, enable/disable, test)')}`)
+    lines.push(`  ${chalk.yellow('P')}  Open settings  ${chalk.dim('(manage API keys, provider toggles, analytics toggle)')}`)
     lines.push(`  ${chalk.yellow('K')} / ${chalk.yellow('Esc')}  Show/hide this help`)
     lines.push(`  ${chalk.yellow('Ctrl+C')}  Exit`)
     lines.push('')
@@ -1894,6 +2258,7 @@ async function main() {
     // ─── Settings overlay keyboard handling ───────────────────────────────────
     if (state.settingsOpen) {
       const providerKeys = Object.keys(sources)
+      const telemetryRowIdx = providerKeys.length
 
       // 📖 Edit mode: capture typed characters for the API key
       if (state.settingsEditMode) {
@@ -1955,12 +2320,20 @@ async function main() {
         return
       }
 
-      if (key.name === 'down' && state.settingsCursor < providerKeys.length - 1) {
+      if (key.name === 'down' && state.settingsCursor < telemetryRowIdx) {
         state.settingsCursor++
         return
       }
 
       if (key.name === 'return') {
+        if (state.settingsCursor === telemetryRowIdx) {
+          ensureTelemetryConfig(state.config)
+          state.config.telemetry.enabled = state.config.telemetry.enabled !== true
+          state.config.telemetry.consentVersion = TELEMETRY_CONSENT_VERSION
+          saveConfig(state.config)
+          return
+        }
+
         // 📖 Enter edit mode for the selected provider's key
         const pk = providerKeys[state.settingsCursor]
         state.settingsEditBuffer = state.config.apiKeys?.[pk] ?? ''
@@ -1969,6 +2342,14 @@ async function main() {
       }
 
       if (key.name === 'space') {
+        if (state.settingsCursor === telemetryRowIdx) {
+          ensureTelemetryConfig(state.config)
+          state.config.telemetry.enabled = state.config.telemetry.enabled !== true
+          state.config.telemetry.consentVersion = TELEMETRY_CONSENT_VERSION
+          saveConfig(state.config)
+          return
+        }
+
         // 📖 Toggle enabled/disabled for selected provider
         const pk = providerKeys[state.settingsCursor]
         if (!state.config.providers) state.config.providers = {}
@@ -1979,6 +2360,8 @@ async function main() {
       }
 
       if (key.name === 't') {
+        if (state.settingsCursor === telemetryRowIdx) return
+
         // 📖 Test the selected provider's key (fires a real ping)
         const pk = providerKeys[state.settingsCursor]
         testProviderKey(pk)

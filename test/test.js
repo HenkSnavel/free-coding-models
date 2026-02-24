@@ -375,6 +375,11 @@ describe('parseArgs', () => {
     assert.equal(parseArgs(argv()).openCodeDesktopMode, false)
   })
 
+  it('detects --no-telemetry flag', () => {
+    assert.equal(parseArgs(argv('--no-telemetry')).noTelemetry, true)
+    assert.equal(parseArgs(argv()).noTelemetry, false)
+  })
+
   it('parses --tier value', () => {
     assert.equal(parseArgs(argv('--tier', 'S')).tierFilter, 'S')
     assert.equal(parseArgs(argv('--tier', 'a')).tierFilter, 'A') // 📖 uppercased
