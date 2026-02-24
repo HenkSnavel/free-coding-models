@@ -48,7 +48,7 @@
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
 - **🌐 Multi-provider** — 111 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, and Google AI — all free to use
-- **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, and test keys live
+- **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, test keys live, and manually check/install updates
 - **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
 - **🏆 Smart ranking** — Top 3 fastest models highlighted with medals 🥇🥈🥉
@@ -64,6 +64,7 @@
 - **📶 Status indicators** — UP ✅ · No Key 🔑 · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
 - **🔍 Keyless latency** — Models are pinged even without an API key — a `🔑 NO KEY` status confirms the server is reachable with real latency shown, so you can compare providers before committing to a key
 - **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
+- **⭐ Persistent favorites** — Press `F` on a selected row to pin/unpin it; favorites stay at top with a dark orange background and a star before the model name
 - **📊 Privacy-first analytics (optional)** — anonymous PostHog events with explicit consent + opt-out
 
 ---
@@ -227,18 +228,21 @@ Press **`P`** to open the Settings screen at any time:
   2) Profile → API Keys → Generate
   3) Press T to test your key
 
-  ↑↓ Navigate  •  Enter Edit key  •  Space Toggle enabled  •  T Test key  •  Esc Close
+  ↑↓ Navigate  •  Enter Edit key / Check-or-Install update  •  Space Toggle enabled  •  T Test key  •  U Check updates  •  Esc Close
 ```
 
 - **↑↓** — navigate providers
 - **Enter** — enter inline key edit mode (type your key, Enter to save, Esc to cancel)
 - **Space** — toggle provider enabled/disabled
 - **T** — fire a real test ping to verify the key works (shows ✅/❌)
+- **U** — manually check npm for a newer version
 - **Esc** — close settings and reload models list
 
 Keys are saved to `~/.free-coding-models.json` (permissions `0600`).
 
 Analytics toggle is in the same Settings screen (`P`) as a dedicated row (toggle with Enter or Space).
+Manual update is in the same Settings screen (`P`) under **Maintenance** (Enter to check, Enter again to install when an update is available).
+Favorites are also persisted in the same config file and survive restarts.
 
 ### Environment variable overrides
 
@@ -604,6 +608,9 @@ This script:
     "replicate": { "enabled": true },
     "deepinfra": { "enabled": true }
   },
+  "favorites": [
+    "nvidia/deepseek-ai/deepseek-v3.2"
+  ],
   "telemetry": {
     "enabled": true,
     "consentVersion": 1,
@@ -637,18 +644,23 @@ This script:
 - **↑↓** — Navigate models
 - **Enter** — Select model (launches OpenCode or sets OpenClaw default, depending on mode)
 - **R/Y/O/M/L/A/S/N/H/V/U** — Sort by Rank/Tier/Origin/Model/LatestPing/Avg/SWE/Ctx/Health/Verdict/Uptime
+- **F** — Toggle favorite on selected model (⭐ in Model column, pinned at top)
 - **T** — Cycle tier filter (All → S+ → S → A+ → A → A- → B+ → B → C → All)
 - **Z** — Cycle mode (OpenCode CLI → OpenCode Desktop → OpenClaw)
-- **P** — Open Settings (manage API keys, provider toggles, analytics toggle)
+- **P** — Open Settings (manage API keys, provider toggles, analytics toggle, manual update)
 - **W** — Decrease ping interval (faster pings)
 - **X** — Increase ping interval (slower pings)
+- **K** / **Esc** — Show/hide help overlay
 - **Ctrl+C** — Exit
 
+Pressing **K** now shows a full in-app reference: main hotkeys, settings hotkeys, and CLI flags with usage examples.
+
 **Keyboard shortcuts (Settings screen — `P` key):**
-- **↑↓** — Navigate providers and analytics row
-- **Enter** — Edit API key inline, or toggle analytics on analytics row
+- **↑↓** — Navigate providers, analytics row, and maintenance row
+- **Enter** — Edit API key inline, toggle analytics on analytics row, or check/install update on maintenance row
 - **Space** — Toggle provider enabled/disabled, or toggle analytics on analytics row
 - **T** — Test current provider's API key (fires a live ping)
+- **U** — Check for updates manually from settings
 - **Esc** — Close settings and return to main TUI
 
 ---

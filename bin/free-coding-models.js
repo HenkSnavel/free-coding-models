@@ -20,7 +20,8 @@
  *   - Automatic config detection and model setup for both tools
  *   - JSON config stored in ~/.free-coding-models.json (auto-migrates from old plain-text)
  *   - Multi-provider support via sources.js (NIM/Groq/Cerebras/OpenRouter/Hugging Face/Replicate/DeepInfra/... — extensible)
- *   - Settings screen (P key) to manage API keys per provider, enable/disable, test keys
+ *   - Settings screen (P key) to manage API keys, provider toggles, analytics, and manual updates
+ *   - Favorites system: toggle with F, pin rows to top, persist between sessions
  *   - Uptime percentage tracking (successful pings / total pings)
  *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/U keys)
  *   - Tier filtering via T key (cycles S+→S→A+→A→A-→B+→B→C→All)
@@ -32,6 +33,7 @@
  *   - `getTelemetryTerminal`: Infer terminal family (Terminal.app, iTerm2, kitty, etc.)
  *   - `isTelemetryDebugEnabled` / `telemetryDebug`: Optional runtime telemetry diagnostics via env
  *   - `sendUsageTelemetry`: Fire-and-forget anonymous app-start event
+ *   - `ensureFavoritesConfig` / `toggleFavoriteModel`: Persist and toggle pinned favorites
  *   - `promptApiKey`: Interactive wizard for first-time multi-provider API key setup
  *   - `promptModeSelection`: Startup menu to choose OpenCode vs OpenClaw
  *   - `buildPingRequest` / `ping`: Build provider-specific probe requests and measure latency
@@ -157,6 +159,53 @@ function ensureTelemetryConfig(config) {
   if (typeof config.telemetry.anonymousId !== 'string' || !config.telemetry.anonymousId.trim()) {
     config.telemetry.anonymousId = null
   }
+}
+
+// 📖 Ensure favorites config shape exists and remains clean.
+// 📖 Stored format: ["providerKey/modelId", ...] in insertion order.
+function ensureFavoritesConfig(config) {
+  if (!Array.isArray(config.favorites)) config.favorites = []
+  const seen = new Set()
+  config.favorites = config.favorites.filter((entry) => {
+    if (typeof entry !== 'string' || entry.trim().length === 0) return false
+    if (seen.has(entry)) return false
+    seen.add(entry)
+    return true
+  })
+}
+
+// 📖 Build deterministic key used to persist one favorite model row.
+function toFavoriteKey(providerKey, modelId) {
+  return `${providerKey}/${modelId}`
+}
+
+// 📖 Sync per-row favorite metadata from config (used by renderer and sorter).
+function syncFavoriteFlags(results, config) {
+  ensureFavoritesConfig(config)
+  const favoriteRankMap = new Map(config.favorites.map((entry, index) => [entry, index]))
+  for (const row of results) {
+    const favoriteKey = toFavoriteKey(row.providerKey, row.modelId)
+    const rank = favoriteRankMap.get(favoriteKey)
+    row.favoriteKey = favoriteKey
+    row.isFavorite = rank !== undefined
+    row.favoriteRank = rank !== undefined ? rank : Number.MAX_SAFE_INTEGER
+  }
+}
+
+// 📖 Toggle favorite state and persist immediately.
+// 📖 Returns true when row is now favorite, false when removed.
+function toggleFavoriteModel(config, providerKey, modelId) {
+  ensureFavoritesConfig(config)
+  const favoriteKey = toFavoriteKey(providerKey, modelId)
+  const existingIndex = config.favorites.indexOf(favoriteKey)
+  if (existingIndex >= 0) {
+    config.favorites.splice(existingIndex, 1)
+    saveConfig(config)
+    return false
+  }
+  config.favorites.push(favoriteKey)
+  saveConfig(config)
+  return true
 }
 
 // 📖 Create or reuse a persistent anonymous distinct_id for PostHog.
@@ -416,14 +465,25 @@ async function sendUsageTelemetry(config, cliArgs, payload) {
   }
 }
 
-async function checkForUpdate() {
+// 📖 checkForUpdateDetailed: Fetch npm latest version with explicit error details.
+// 📖 Used by settings manual-check flow to display meaningful status in the UI.
+async function checkForUpdateDetailed() {
   try {
     const res = await fetch('https://registry.npmjs.org/free-coding-models/latest', { signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return null
+    if (!res.ok) return { latestVersion: null, error: `HTTP ${res.status}` }
     const data = await res.json()
-    if (data.version && data.version !== LOCAL_VERSION) return data.version
-  } catch {}
-  return null
+    if (data.version && data.version !== LOCAL_VERSION) return { latestVersion: data.version, error: null }
+    return { latestVersion: null, error: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return { latestVersion: null, error: message }
+  }
+}
+
+// 📖 checkForUpdate: Backward-compatible wrapper for startup update prompt.
+async function checkForUpdate() {
+  const { latestVersion } = await checkForUpdateDetailed()
+  return latestVersion
 }
 
 function runUpdate(latestVersion) {
@@ -723,6 +783,16 @@ function calculateViewport(terminalRows, scrollOffset, totalModels) {
   return { startIdx: scrollOffset, endIdx, hasAbove, hasBelow }
 }
 
+// 📖 Favorites are always pinned at the top and keep insertion order.
+// 📖 Non-favorites still use the active sort column/direction.
+function sortResultsWithPinnedFavorites(results, sortColumn, sortDirection) {
+  const favoriteRows = results
+    .filter((r) => r.isFavorite)
+    .sort((a, b) => a.favoriteRank - b.favoriteRank)
+  const nonFavoriteRows = sortResults(results.filter((r) => !r.isFavorite), sortColumn, sortDirection)
+  return [...favoriteRows, ...nonFavoriteRows]
+}
+
 // 📖 renderTable: mode param controls footer hint text (opencode vs openclaw)
 function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilterMode = 0, scrollOffset = 0, terminalRows = 0, originFilterMode = 0) {
   // 📖 Filter out hidden models for display
@@ -790,7 +860,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const W_UPTIME = 6
 
   // 📖 Sort models using the shared helper
-  const sorted = sortResults(visibleResults, sortColumn, sortDirection)
+  const sorted = sortResultsWithPinnedFavorites(visibleResults, sortColumn, sortDirection)
 
   const lines = [
     `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${modeHint}${tierBadge}${originBadge}   ` +
@@ -882,7 +952,10 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Show provider name from sources map (NIM / Groq / Cerebras)
     const providerName = sources[r.providerKey]?.name ?? r.providerKey ?? 'NIM'
     const source = chalk.green(providerName.padEnd(W_SOURCE))
-    const name = r.label.slice(0, W_MODEL).padEnd(W_MODEL)
+    // 📖 Favorites get a leading star in Model column.
+    const favoritePrefix = r.isFavorite ? '⭐ ' : ''
+    const nameWidth = Math.max(0, W_MODEL - favoritePrefix.length)
+    const name = favoritePrefix + r.label.slice(0, nameWidth).padEnd(nameWidth)
     const sweScore = r.sweScore ?? '—'
     const sweCell = sweScore !== '—' && parseFloat(sweScore) >= 50 
       ? chalk.greenBright(sweScore.padEnd(W_SWE))
@@ -1012,8 +1085,12 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Build row with double space between columns (order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
     const row = '  ' + num + '  ' + tier + '  ' + sweCell + '  ' + ctxCell + '  ' + name + '  ' + source + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
 
-    if (isCursor) {
+    if (isCursor && r.isFavorite) {
+      lines.push(chalk.bgRgb(120, 60, 0)(row))
+    } else if (isCursor) {
       lines.push(chalk.bgRgb(139, 0, 139)(row))
+    } else if (r.isFavorite) {
+      lines.push(chalk.bgRgb(90, 45, 0)(row))
     } else {
       lines.push(row)
     }
@@ -1032,7 +1109,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  F Favorite  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(
     chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') +
@@ -2119,6 +2196,7 @@ async function main() {
   // 📖 Load JSON config (auto-migrates old plain-text ~/.free-coding-models if needed)
   const config = loadConfig()
   ensureTelemetryConfig(config)
+  ensureFavoritesConfig(config)
 
   // 📖 Check if any provider has a key — if not, run the first-time setup wizard
   const hasAnyKey = Object.keys(sources).some(pk => !!getApiKey(config, pk))
@@ -2202,6 +2280,7 @@ async function main() {
       httpCode: null,
       hidden: false,  // 📖 Simple flag to hide/show models
     }))
+  syncFavoriteFlags(results, config)
 
   // 📖 Clamp scrollOffset so cursor is always within the visible viewport window.
   // 📖 Called after every cursor move, sort change, and terminal resize.
@@ -2252,6 +2331,9 @@ async function main() {
     settingsEditMode: false,      // 📖 Whether we're in inline key editing mode
     settingsEditBuffer: '',       // 📖 Typed characters for the API key being edited
     settingsTestResults: {},      // 📖 { providerKey: 'pending'|'ok'|'fail'|null }
+    settingsUpdateState: 'idle',  // 📖 'idle'|'checking'|'available'|'up-to-date'|'error'|'installing'
+    settingsUpdateLatestVersion: null, // 📖 Latest npm version discovered from manual check
+    settingsUpdateError: null,    // 📖 Last update-check error message for maintenance row
     config,                       // 📖 Live reference to the config object (updated on save)
     visibleSorted: [],            // 📖 Cached visible+sorted models — shared between render loop and key handlers
     helpVisible: false,           // 📖 Whether the help overlay (K key) is active
@@ -2289,6 +2371,11 @@ async function main() {
     const activeTier = TIER_CYCLE[tierFilterMode]
     const activeOrigin = ORIGIN_CYCLE[originFilterMode]
     state.results.forEach(r => {
+      // 📖 Favorites stay visible regardless of tier/origin filters.
+      if (r.isFavorite) {
+        r.hidden = false
+        return
+      }
       // 📖 Apply both tier and origin filters — model is hidden if it fails either
       const tierHide = activeTier !== null && r.tier !== activeTier
       const originHide = activeOrigin !== null && r.providerKey !== activeOrigin
@@ -2305,6 +2392,7 @@ async function main() {
   function renderSettings() {
     const providerKeys = Object.keys(sources)
     const telemetryRowIdx = providerKeys.length
+    const updateRowIdx = providerKeys.length + 1
     const EL = '\x1b[K'
     const lines = []
 
@@ -2382,10 +2470,34 @@ async function main() {
     lines.push(telemetryCursor ? chalk.bgRgb(30, 30, 60)(telemetryRow) : telemetryRow)
 
     lines.push('')
+    lines.push(`  ${chalk.bold('🛠 Maintenance')}`)
+    lines.push(`  ${chalk.dim('  ' + '─'.repeat(112))}`)
+    lines.push('')
+
+    const updateCursor = state.settingsCursor === updateRowIdx
+    const updateBullet = updateCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
+    const updateState = state.settingsUpdateState
+    const latestFound = state.settingsUpdateLatestVersion
+    const updateActionLabel = updateState === 'available' && latestFound
+      ? `Install update (v${latestFound})`
+      : 'Check for updates manually'
+    let updateStatus = chalk.dim('Press Enter or U to check npm registry')
+    if (updateState === 'checking') updateStatus = chalk.yellow('Checking npm registry…')
+    if (updateState === 'available' && latestFound) updateStatus = chalk.greenBright(`Update available: v${latestFound} (Enter to install)`)
+    if (updateState === 'up-to-date') updateStatus = chalk.green('Already on latest version')
+    if (updateState === 'error') updateStatus = chalk.red('Check failed (press U to retry)')
+    if (updateState === 'installing') updateStatus = chalk.cyan('Installing update…')
+    const updateRow = `${updateBullet}${chalk.bold(updateActionLabel).padEnd(44)} ${updateStatus}`
+    lines.push(updateCursor ? chalk.bgRgb(30, 30, 60)(updateRow) : updateRow)
+    if (updateState === 'error' && state.settingsUpdateError) {
+      lines.push(chalk.red(`      ${state.settingsUpdateError}`))
+    }
+
+    lines.push('')
     if (state.settingsEditMode) {
       lines.push(chalk.dim('  Type API key  •  Enter Save  •  Esc Cancel'))
     } else {
-      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key / Toggle analytics  •  Space Toggle enabled  •  T Test key  •  Esc Close'))
+      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key / Toggle analytics / Check-or-Install update  •  Space Toggle enabled  •  T Test key  •  U Check updates  •  Esc Close'))
     }
     lines.push('')
 
@@ -2404,6 +2516,7 @@ async function main() {
     lines.push('')
     lines.push(`  ${chalk.bold('❓ Keyboard Shortcuts')}  ${chalk.dim('— press K or Esc to close')}`)
     lines.push('')
+    lines.push(`  ${chalk.bold('Main TUI')}`)
     lines.push(`  ${chalk.bold('Navigation')}`)
     lines.push(`  ${chalk.yellow('↑↓')}           Navigate rows`)
     lines.push(`  ${chalk.yellow('Enter')}        Select model and launch`)
@@ -2421,9 +2534,29 @@ async function main() {
     lines.push(`  ${chalk.yellow('W')}  Decrease ping interval (faster)`)
     lines.push(`  ${chalk.yellow('X')}  Increase ping interval (slower)`)
     lines.push(`  ${chalk.yellow('Z')}  Cycle launch mode  ${chalk.dim('(OpenCode CLI → OpenCode Desktop → OpenClaw)')}`)
-    lines.push(`  ${chalk.yellow('P')}  Open settings  ${chalk.dim('(manage API keys, provider toggles, analytics toggle)')}`)
+    lines.push(`  ${chalk.yellow('F')}  Toggle favorite on selected row  ${chalk.dim('(⭐ pinned at top, persisted)')}`)
+    lines.push(`  ${chalk.yellow('P')}  Open settings  ${chalk.dim('(manage API keys, provider toggles, analytics, manual update)')}`)
     lines.push(`  ${chalk.yellow('K')} / ${chalk.yellow('Esc')}  Show/hide this help`)
     lines.push(`  ${chalk.yellow('Ctrl+C')}  Exit`)
+    lines.push('')
+    lines.push(`  ${chalk.bold('Settings (P)')}`)
+    lines.push(`  ${chalk.yellow('↑↓')}           Navigate rows`)
+    lines.push(`  ${chalk.yellow('Enter')}        Edit key / toggle analytics / check-install update`)
+    lines.push(`  ${chalk.yellow('Space')}        Toggle provider enable/disable`)
+    lines.push(`  ${chalk.yellow('T')}            Test selected provider key`)
+    lines.push(`  ${chalk.yellow('U')}            Check updates manually`)
+    lines.push(`  ${chalk.yellow('Esc')}          Close settings`)
+    lines.push('')
+    lines.push(`  ${chalk.bold('CLI Flags')}`)
+    lines.push(`  ${chalk.dim('Usage: free-coding-models [options]')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --opencode')}           ${chalk.dim('OpenCode CLI mode')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --opencode-desktop')}   ${chalk.dim('OpenCode Desktop mode')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --openclaw')}           ${chalk.dim('OpenClaw mode')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --best')}               ${chalk.dim('Only top tiers (A+, S, S+)')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --fiable')}             ${chalk.dim('10s reliability analysis')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --tier S|A|B|C')}       ${chalk.dim('Filter by tier letter')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --no-telemetry')}       ${chalk.dim('Disable telemetry for this run')}`)
+    lines.push(`  ${chalk.dim('Flags can be combined: --openclaw --tier S')}`)
     lines.push('')
     const cleared = lines.map(l => l + EL)
     const remaining = state.terminalRows > 0 ? Math.max(0, state.terminalRows - cleared.length) : 0
@@ -2448,11 +2581,47 @@ async function main() {
     state.settingsTestResults[providerKey] = code === '200' ? 'ok' : 'fail'
   }
 
+  // 📖 Manual update checker from settings; keeps status visible in maintenance row.
+  async function checkUpdatesFromSettings() {
+    if (state.settingsUpdateState === 'checking' || state.settingsUpdateState === 'installing') return
+    state.settingsUpdateState = 'checking'
+    state.settingsUpdateError = null
+    const { latestVersion, error } = await checkForUpdateDetailed()
+    if (error) {
+      state.settingsUpdateState = 'error'
+      state.settingsUpdateLatestVersion = null
+      state.settingsUpdateError = error
+      return
+    }
+    if (latestVersion) {
+      state.settingsUpdateState = 'available'
+      state.settingsUpdateLatestVersion = latestVersion
+      state.settingsUpdateError = null
+      return
+    }
+    state.settingsUpdateState = 'up-to-date'
+    state.settingsUpdateLatestVersion = null
+    state.settingsUpdateError = null
+  }
+
+  // 📖 Leaves TUI cleanly, then runs npm global update command.
+  function launchUpdateFromSettings(latestVersion) {
+    if (!latestVersion) return
+    state.settingsUpdateState = 'installing'
+    clearInterval(ticker)
+    clearTimeout(state.pingIntervalObj)
+    process.stdin.removeListener('keypress', onKeyPress)
+    if (process.stdin.isTTY) process.stdin.setRawMode(false)
+    process.stdin.pause()
+    process.stdout.write(ALT_LEAVE)
+    runUpdate(latestVersion)
+  }
+
   // Apply CLI --tier filter if provided
   if (cliArgs.tierFilter) {
     const allowed = TIER_LETTER_MAP[cliArgs.tierFilter]
     state.results.forEach(r => {
-      r.hidden = !allowed.includes(r.tier)
+      r.hidden = r.isFavorite ? false : !allowed.includes(r.tier)
     })
   }
 
@@ -2476,6 +2645,7 @@ async function main() {
     if (state.settingsOpen) {
       const providerKeys = Object.keys(sources)
       const telemetryRowIdx = providerKeys.length
+      const updateRowIdx = providerKeys.length + 1
 
       // 📖 Edit mode: capture typed characters for the API key
       if (state.settingsEditMode) {
@@ -2518,6 +2688,11 @@ async function main() {
         // 📖 Re-index results
         results.forEach((r, i) => { r.idx = i + 1 })
         state.results = results
+        syncFavoriteFlags(state.results, state.config)
+        applyTierFilter()
+        const visible = state.results.filter(r => !r.hidden)
+        state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
+        if (state.cursor >= state.visibleSorted.length) state.cursor = Math.max(0, state.visibleSorted.length - 1)
         adjustScrollOffset(state)
         // 📖 Re-ping all models that were 'noauth' (got 401 without key) but now have a key
         // 📖 This makes the TUI react immediately when a user adds an API key in settings
@@ -2537,7 +2712,7 @@ async function main() {
         return
       }
 
-      if (key.name === 'down' && state.settingsCursor < telemetryRowIdx) {
+      if (key.name === 'down' && state.settingsCursor < updateRowIdx) {
         state.settingsCursor++
         return
       }
@@ -2548,6 +2723,14 @@ async function main() {
           state.config.telemetry.enabled = state.config.telemetry.enabled !== true
           state.config.telemetry.consentVersion = TELEMETRY_CONSENT_VERSION
           saveConfig(state.config)
+          return
+        }
+        if (state.settingsCursor === updateRowIdx) {
+          if (state.settingsUpdateState === 'available' && state.settingsUpdateLatestVersion) {
+            launchUpdateFromSettings(state.settingsUpdateLatestVersion)
+            return
+          }
+          checkUpdatesFromSettings()
           return
         }
 
@@ -2566,6 +2749,7 @@ async function main() {
           saveConfig(state.config)
           return
         }
+        if (state.settingsCursor === updateRowIdx) return
 
         // 📖 Toggle enabled/disabled for selected provider
         const pk = providerKeys[state.settingsCursor]
@@ -2577,11 +2761,16 @@ async function main() {
       }
 
       if (key.name === 't') {
-        if (state.settingsCursor === telemetryRowIdx) return
+        if (state.settingsCursor === telemetryRowIdx || state.settingsCursor === updateRowIdx) return
 
         // 📖 Test the selected provider's key (fires a real ping)
         const pk = providerKeys[state.settingsCursor]
         testProviderKey(pk)
+        return
+      }
+
+      if (key.name === 'u') {
+        checkUpdatesFromSettings()
         return
       }
 
@@ -2617,9 +2806,26 @@ async function main() {
       }
       // 📖 Recompute visible sorted list and reset cursor to top to avoid stale index
       const visible = state.results.filter(r => !r.hidden)
-      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+      state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
       state.cursor = 0
       state.scrollOffset = 0
+      return
+    }
+
+    // 📖 F key: toggle favorite on the currently selected row and persist to config.
+    if (key.name === 'f') {
+      const selected = state.visibleSorted[state.cursor]
+      if (!selected) return
+      toggleFavoriteModel(state.config, selected.providerKey, selected.modelId)
+      syncFavoriteFlags(state.results, state.config)
+      applyTierFilter()
+      const selectedKey = toFavoriteKey(selected.providerKey, selected.modelId)
+      const visible = state.results.filter(r => !r.hidden)
+      state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
+      const newCursor = state.visibleSorted.findIndex(r => toFavoriteKey(r.providerKey, r.modelId) === selectedKey)
+      if (newCursor >= 0) state.cursor = newCursor
+      else if (state.cursor >= state.visibleSorted.length) state.cursor = Math.max(0, state.visibleSorted.length - 1)
+      adjustScrollOffset(state)
       return
     }
 
@@ -2637,7 +2843,7 @@ async function main() {
       applyTierFilter()
       // 📖 Recompute visible sorted list and reset cursor to avoid stale index into new filtered set
       const visible = state.results.filter(r => !r.hidden)
-      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+      state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
       state.cursor = 0
       state.scrollOffset = 0
       return
@@ -2649,7 +2855,7 @@ async function main() {
       applyTierFilter()
       // 📖 Recompute visible sorted list and reset cursor to avoid stale index into new filtered set
       const visible = state.results.filter(r => !r.hidden)
-      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+      state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
       state.cursor = 0
       state.scrollOffset = 0
       return
@@ -2759,7 +2965,7 @@ async function main() {
     // 📖 Cache visible+sorted models each frame so Enter handler always matches the display
     if (!state.settingsOpen) {
       const visible = state.results.filter(r => !r.hidden)
-      state.visibleSorted = sortResults(visible, state.sortColumn, state.sortDirection)
+      state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
     }
     const content = state.settingsOpen
       ? renderSettings()
@@ -2771,7 +2977,7 @@ async function main() {
 
   // 📖 Populate visibleSorted before the first frame so Enter works immediately
   const initialVisible = state.results.filter(r => !r.hidden)
-  state.visibleSorted = sortResults(initialVisible, state.sortColumn, state.sortDirection)
+  state.visibleSorted = sortResultsWithPinnedFavorites(initialVisible, state.sortColumn, state.sortDirection)
 
   process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode))
 
