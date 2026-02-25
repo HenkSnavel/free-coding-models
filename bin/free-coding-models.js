@@ -2302,7 +2302,9 @@ async function main() {
       st.scrollOffset = st.cursor - modelSlots + 1
     }
     // Final clamp
-    const maxOffset = Math.max(0, total - maxSlots)
+    // 📖 Keep one extra scroll step when top indicator is visible,
+    // 📖 otherwise the last rows become unreachable at the bottom.
+    const maxOffset = Math.max(0, total - maxSlots + 1)
     if (st.scrollOffset > maxOffset) st.scrollOffset = maxOffset
     if (st.scrollOffset < 0) st.scrollOffset = 0
   }
@@ -2816,12 +2818,21 @@ async function main() {
     if (key.name === 'f') {
       const selected = state.visibleSorted[state.cursor]
       if (!selected) return
+      const wasFavorite = selected.isFavorite
       toggleFavoriteModel(state.config, selected.providerKey, selected.modelId)
       syncFavoriteFlags(state.results, state.config)
       applyTierFilter()
-      const selectedKey = toFavoriteKey(selected.providerKey, selected.modelId)
       const visible = state.results.filter(r => !r.hidden)
       state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
+
+      // 📖 UX rule: when unpinning a favorite, jump back to the top of the list.
+      if (wasFavorite) {
+        state.cursor = 0
+        state.scrollOffset = 0
+        return
+      }
+
+      const selectedKey = toFavoriteKey(selected.providerKey, selected.modelId)
       const newCursor = state.visibleSorted.findIndex(r => toFavoriteKey(r.providerKey, r.modelId) === selectedKey)
       if (newCursor >= 0) state.cursor = newCursor
       else if (state.cursor >= state.visibleSorted.length) state.cursor = Math.max(0, state.visibleSorted.length - 1)
