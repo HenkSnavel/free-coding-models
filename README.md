@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/npm/v/free-coding-models?color=76b900&label=npm&logo=npm" alt="npm version">
   <img src="https://img.shields.io/node/v/free-coding-models?color=76b900&logo=node.js" alt="node version">
   <img src="https://img.shields.io/npm/l/free-coding-models?color=76b900" alt="license">
-  <img src="https://img.shields.io/badge/models-111-76b900?logo=nvidia" alt="models count">
-  <img src="https://img.shields.io/badge/providers-13-blue" alt="providers count">
+  <img src="https://img.shields.io/badge/models-134-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/providers-17-blue" alt="providers count">
 </p>
 
 <h1 align="center">free-coding-models</h1>
@@ -24,7 +24,7 @@
 
 <p align="center">
   <strong>Find the fastest coding LLM models in seconds</strong><br>
-  <sub>Ping free coding models from 13 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
+  <sub>Ping free coding models from 17 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@
 ## ✨ Features
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
-- **🌐 Multi-provider** — 111 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, and Google AI — all free to use
+- **🌐 Multi-provider** — 134 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, Google AI, SiliconFlow, Together AI, Cloudflare Workers AI, and Perplexity API
 - **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, test keys live, and manually check/install updates
 - **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
@@ -88,10 +88,14 @@ Before using `free-coding-models`, make sure you have:
    - **Hyperbolic** — [app.hyperbolic.ai/settings](https://app.hyperbolic.ai/settings) → API Keys ($1 free trial)
    - **Scaleway** — [console.scaleway.com/iam/api-keys](https://console.scaleway.com/iam/api-keys) → IAM → API Keys (1M free tokens)
    - **Google AI Studio** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → Get API key (free Gemma models, 14.4K req/day)
+   - **SiliconFlow** — [cloud.siliconflow.cn/account/ak](https://cloud.siliconflow.cn/account/ak) → API Keys (free-model quotas vary by model)
+   - **Together AI** — [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) → API Keys (credits/promotions vary)
+   - **Cloudflare Workers AI** — [dash.cloudflare.com](https://dash.cloudflare.com) → Create API token + set `CLOUDFLARE_ACCOUNT_ID` (Free: 10k neurons/day)
+   - **Perplexity API** — [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api) → API Key (tiered limits by spend)
 3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
 4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** You don't need all thirteen providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
+> 💡 **Tip:** You don't need all seventeen providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
 
 ---
 
@@ -172,13 +176,13 @@ When you run `free-coding-models` without `--opencode` or `--openclaw`, you get 
 Use `↑↓` arrows to select, `Enter` to confirm. Then the TUI launches with your chosen mode shown in the header badge.
 
 **How it works:**
-1. **Ping phase** — All enabled models are pinged in parallel (up to 111 across 13 providers)
+1. **Ping phase** — All enabled models are pinged in parallel (up to 134 across 17 providers)
 2. **Continuous monitoring** — Models are re-pinged every 2 seconds forever
 3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to act
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode or OpenClaw
 
-Setup wizard (first run — walks through all 13 providers):
+Setup wizard (first run — walks through all 17 providers):
 
 ```
   🔑 First-time setup — API keys
@@ -208,7 +212,7 @@ Setup wizard (first run — walks through all 13 providers):
   You can add or change keys anytime with the P key in the TUI.
 ```
 
-You don't need all thirteen — skip any provider by pressing Enter. At least one key is required.
+You don't need all seventeen — skip any provider by pressing Enter. At least one key is required.
 
 ### Adding or changing keys later
 
@@ -257,6 +261,10 @@ HUGGINGFACE_API_KEY=hf_xxx free-coding-models
 REPLICATE_API_TOKEN=r8_xxx free-coding-models
 DEEPINFRA_API_KEY=di_xxx free-coding-models
 FIREWORKS_API_KEY=fw_xxx free-coding-models
+SILICONFLOW_API_KEY=sk_xxx free-coding-models
+TOGETHER_API_KEY=together_xxx free-coding-models
+CLOUDFLARE_API_TOKEN=cf_xxx CLOUDFLARE_ACCOUNT_ID=your_account_id free-coding-models
+PERPLEXITY_API_KEY=pplx_xxx free-coding-models
 FREE_CODING_MODELS_TELEMETRY=0 free-coding-models
 ```
 
@@ -306,13 +314,46 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 1. Sign up at [fireworks.ai](https://fireworks.ai)
 2. Open Settings → Access Tokens and create a token
 
+**Mistral Codestral**:
+1. Sign up at [codestral.mistral.ai](https://codestral.mistral.ai)
+2. Go to API Keys → Create
+
+**Hyperbolic**:
+1. Sign up at [app.hyperbolic.ai/settings](https://app.hyperbolic.ai/settings)
+2. Create an API key in Settings
+
+**Scaleway**:
+1. Sign up at [console.scaleway.com/iam/api-keys](https://console.scaleway.com/iam/api-keys)
+2. Go to IAM → API Keys
+
+**Google AI Studio**:
+1. Sign up at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Create an API key for Gemini/Gemma endpoints
+
+**SiliconFlow**:
+1. Sign up at [cloud.siliconflow.cn/account/ak](https://cloud.siliconflow.cn/account/ak)
+2. Create API key in Account → API Keys
+
+**Together AI**:
+1. Sign up at [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys)
+2. Create an API key in Settings
+
+**Cloudflare Workers AI**:
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Create an API token with Workers AI permissions
+3. Export both `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+
+**Perplexity API**:
+1. Sign up at [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
+2. Create API key (`PERPLEXITY_API_KEY`)
+
 > 💡 **Free tiers** — each provider exposes a dev/free tier with its own quotas.
 
 ---
 
 ## 🤖 Coding Models
 
-**111 coding models** across 13 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**134 coding models** across 17 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
 
 ### NVIDIA NIM (44 models)
 
@@ -327,7 +368,7 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 | **B** 20–30% | R1 Distill 8B (28.2%), R1 Distill 7B (22.6%) |
 | **C** <20% | Gemma 2 9B (18.0%), Phi 4 Mini (14.0%), Phi 3.5 Mini (12.0%) |
 
-### Groq (6 models)
+### Groq (10 models)
 
 | Tier | SWE-bench | Model |
 |------|-----------|-------|
@@ -336,7 +377,7 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 | **A** 40–50% | Llama 4 Scout (44.0%), R1 Distill 70B (43.9%) |
 | **A-** 35–40% | Llama 3.3 70B (39.5%) |
 
-### Cerebras (3 models)
+### Cerebras (7 models)
 
 | Tier | SWE-bench | Model |
 |------|-----------|-------|
@@ -582,6 +623,11 @@ This script:
 | `HYPERBOLIC_API_KEY` | Hyperbolic key |
 | `SCALEWAY_API_KEY` | Scaleway key |
 | `GOOGLE_API_KEY` | Google AI Studio key |
+| `SILICONFLOW_API_KEY` | SiliconFlow key |
+| `TOGETHER_API_KEY` | Together AI key |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_API_KEY` | Cloudflare Workers AI token/key |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID (required for Workers AI endpoint URL) |
+| `PERPLEXITY_API_KEY` / `PPLX_API_KEY` | Perplexity API key |
 | `FREE_CODING_MODELS_TELEMETRY` | `0` disables analytics, `1` enables analytics |
 | `FREE_CODING_MODELS_POSTHOG_KEY` | PostHog project API key used for anonymous event capture |
 | `FREE_CODING_MODELS_POSTHOG_HOST` | Optional PostHog ingest host (`https://eu.i.posthog.com` default) |
@@ -597,7 +643,11 @@ This script:
     "openrouter": "sk-or-xxx",
     "huggingface": "hf_xxx",
     "replicate": "r8_xxx",
-    "deepinfra": "di_xxx"
+    "deepinfra": "di_xxx",
+    "siliconflow": "sk_xxx",
+    "together": "together_xxx",
+    "cloudflare": "cf_xxx",
+    "perplexity": "pplx_xxx"
   },
   "providers": {
     "nvidia":   { "enabled": true },
@@ -606,7 +656,11 @@ This script:
     "openrouter": { "enabled": true },
     "huggingface": { "enabled": true },
     "replicate": { "enabled": true },
-    "deepinfra": { "enabled": true }
+    "deepinfra": { "enabled": true },
+    "siliconflow": { "enabled": true },
+    "together": { "enabled": true },
+    "cloudflare": { "enabled": true },
+    "perplexity": { "enabled": true }
   },
   "favorites": [
     "nvidia/deepseek-ai/deepseek-v3.2"

@@ -60,7 +60,8 @@
  *   ⚙️ Configuration:
  *   - API keys stored per-provider in ~/.free-coding-models.json (0600 perms)
  *   - Old ~/.free-coding-models plain-text auto-migrated as nvidia key on first run
- *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, HUGGINGFACE_API_KEY/HF_TOKEN, REPLICATE_API_TOKEN, DEEPINFRA_API_KEY/DEEPINFRA_TOKEN, FIREWORKS_API_KEY, etc.
+ *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, HUGGINGFACE_API_KEY/HF_TOKEN, REPLICATE_API_TOKEN, DEEPINFRA_API_KEY/DEEPINFRA_TOKEN, FIREWORKS_API_KEY, SILICONFLOW_API_KEY, TOGETHER_API_KEY, PERPLEXITY_API_KEY, etc.
+ *   - Cloudflare Workers AI requires both CLOUDFLARE_API_TOKEN (or CLOUDFLARE_API_KEY) and CLOUDFLARE_ACCOUNT_ID
  *   - Models loaded from sources.js — all provider/model definitions are centralized there
  *   - OpenCode config: ~/.config/opencode/opencode.json
  *   - OpenClaw config: ~/.openclaw/openclaw.json
@@ -755,6 +756,52 @@ const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
 // 📖 Spinner cell: braille (1-wide) + padding to fill CELL_W visual chars
 const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].padEnd(CELL_W))
 
+// 📖 Overlay-specific backgrounds so Settings (P) and Help (K) are visually distinct
+// 📖 from the main table and from each other.
+const SETTINGS_OVERLAY_BG = chalk.bgRgb(14, 20, 30)
+const HELP_OVERLAY_BG = chalk.bgRgb(24, 16, 32)
+const OVERLAY_PANEL_WIDTH = 116
+
+// 📖 Strip ANSI color/control sequences to estimate visible text width before padding.
+function stripAnsi(input) {
+  return String(input).replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\][^\x1b]*\x1b\\/g, '')
+}
+
+// 📖 Tint overlay lines with a fixed dark panel width so the background is clearly visible.
+function tintOverlayLines(lines, bgColor) {
+  return lines.map((line) => {
+    const text = String(line)
+    const visibleWidth = stripAnsi(text).length
+    const padding = ' '.repeat(Math.max(0, OVERLAY_PANEL_WIDTH - visibleWidth))
+    return bgColor(text + padding)
+  })
+}
+
+// 📖 Clamp overlay scroll to valid bounds for the current terminal height.
+function clampOverlayOffset(offset, totalLines, terminalRows) {
+  const viewportRows = Math.max(1, terminalRows || 1)
+  const maxOffset = Math.max(0, totalLines - viewportRows)
+  return Math.max(0, Math.min(maxOffset, offset))
+}
+
+// 📖 Ensure a target line is visible inside overlay viewport (used by Settings cursor).
+function keepOverlayTargetVisible(offset, targetLine, totalLines, terminalRows) {
+  const viewportRows = Math.max(1, terminalRows || 1)
+  let next = clampOverlayOffset(offset, totalLines, terminalRows)
+  if (targetLine < next) next = targetLine
+  else if (targetLine >= next + viewportRows) next = targetLine - viewportRows + 1
+  return clampOverlayOffset(next, totalLines, terminalRows)
+}
+
+// 📖 Slice overlay lines to terminal viewport and pad with blanks to avoid stale frames.
+function sliceOverlayLines(lines, offset, terminalRows) {
+  const viewportRows = Math.max(1, terminalRows || 1)
+  const nextOffset = clampOverlayOffset(offset, lines.length, terminalRows)
+  const visible = lines.slice(nextOffset, nextOffset + viewportRows)
+  while (visible.length < viewportRows) visible.push('')
+  return { visible, offset: nextOffset }
+}
+
 // ─── Table renderer ───────────────────────────────────────────────────────────
 
 // 📖 Core logic functions (getAvg, getVerdict, getUptime, sortResults, etc.)
@@ -1139,6 +1186,15 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 // 📖 providerKey and url determine provider-specific request format.
 // 📖 apiKey can be null — in that case no Authorization header is sent.
 // 📖 A 401 response still tells us the server is UP and gives us real latency.
+function resolveCloudflareUrl(url) {
+  // 📖 Cloudflare's OpenAI-compatible endpoint is account-scoped.
+  // 📖 We resolve {account_id} from env so provider setup can stay simple in config.
+  const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  if (!url.includes('{account_id}')) return url
+  if (!accountId) return url.replace('{account_id}', 'missing-account-id')
+  return url.replace('{account_id}', encodeURIComponent(accountId))
+}
+
 function buildPingRequest(apiKey, modelId, providerKey, url) {
   if (providerKey === 'replicate') {
     // 📖 Replicate uses /v1/predictions with a different payload than OpenAI chat-completions.
@@ -1148,6 +1204,17 @@ function buildPingRequest(apiKey, modelId, providerKey, url) {
       url,
       headers: replicateHeaders,
       body: { version: modelId, input: { prompt: 'hi' } },
+    }
+  }
+
+  if (providerKey === 'cloudflare') {
+    // 📖 Cloudflare Workers AI uses OpenAI-compatible payload but needs account_id in URL.
+    const headers = { 'Content-Type': 'application/json' }
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+    return {
+      url: resolveCloudflareUrl(url),
+      headers,
+      body: { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 },
     }
   }
 
@@ -1228,6 +1295,10 @@ const ENV_VAR_NAMES = {
   hyperbolic: 'HYPERBOLIC_API_KEY',
   scaleway:   'SCALEWAY_API_KEY',
   googleai:   'GOOGLE_API_KEY',
+  siliconflow:'SILICONFLOW_API_KEY',
+  together:   'TOGETHER_API_KEY',
+  cloudflare: 'CLOUDFLARE_API_TOKEN',
+  perplexity: 'PERPLEXITY_API_KEY',
 }
 
 // 📖 Provider metadata used by the setup wizard and Settings details panel.
@@ -1323,6 +1394,34 @@ const PROVIDER_METADATA = {
     signupUrl: 'https://aistudio.google.com/apikey',
     signupHint: 'Get API key',
     rateLimits: '14.4K req/day, 30/min',
+  },
+  siliconflow: {
+    label: 'SiliconFlow',
+    color: chalk.rgb(255, 120, 30),
+    signupUrl: 'https://cloud.siliconflow.cn/account/ak',
+    signupHint: 'API Keys → Create',
+    rateLimits: 'Free models: usually 100 RPM, varies by model',
+  },
+  together: {
+    label: 'Together AI',
+    color: chalk.rgb(0, 180, 255),
+    signupUrl: 'https://api.together.ai/settings/api-keys',
+    signupHint: 'Settings → API keys',
+    rateLimits: 'Credits/promos vary by account (check console)',
+  },
+  cloudflare: {
+    label: 'Cloudflare Workers AI',
+    color: chalk.rgb(242, 119, 36),
+    signupUrl: 'https://dash.cloudflare.com',
+    signupHint: 'Create AI API token + set CLOUDFLARE_ACCOUNT_ID',
+    rateLimits: 'Free: 10k neurons/day, text-gen 300 RPM',
+  },
+  perplexity: {
+    label: 'Perplexity API',
+    color: chalk.rgb(0, 210, 190),
+    signupUrl: 'https://www.perplexity.ai/settings/api',
+    signupHint: 'Generate API key (billing may be required)',
+    rateLimits: 'Tiered limits by spend (default ~50 RPM)',
   },
 }
 
@@ -1689,6 +1788,53 @@ After installation, you can use: opencode --model ${modelRef}`
           options: {
             baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
             apiKey: '{env:GOOGLE_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'siliconflow') {
+        config.provider.siliconflow = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'SiliconFlow',
+          options: {
+            baseURL: 'https://api.siliconflow.com/v1',
+            apiKey: '{env:SILICONFLOW_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'together') {
+        config.provider.together = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Together AI',
+          options: {
+            baseURL: 'https://api.together.xyz/v1',
+            apiKey: '{env:TOGETHER_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'cloudflare') {
+        const cloudflareAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+        if (!cloudflareAccountId) {
+          console.log(chalk.yellow('  ⚠ Cloudflare Workers AI requires CLOUDFLARE_ACCOUNT_ID for OpenCode integration.'))
+          console.log(chalk.dim('    Export CLOUDFLARE_ACCOUNT_ID and retry this selection.'))
+          console.log()
+          return
+        }
+        config.provider.cloudflare = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Cloudflare Workers AI',
+          options: {
+            baseURL: `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}/ai/v1`,
+            apiKey: '{env:CLOUDFLARE_API_TOKEN}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'perplexity') {
+        config.provider.perplexity = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Perplexity API',
+          options: {
+            baseURL: 'https://api.perplexity.ai',
+            apiKey: '{env:PERPLEXITY_API_KEY}'
           },
           models: {}
         }
@@ -2339,6 +2485,8 @@ async function main() {
     config,                       // 📖 Live reference to the config object (updated on save)
     visibleSorted: [],            // 📖 Cached visible+sorted models — shared between render loop and key handlers
     helpVisible: false,           // 📖 Whether the help overlay (K key) is active
+    settingsScrollOffset: 0,      // 📖 Vertical scroll offset for Settings overlay viewport
+    helpScrollOffset: 0,          // 📖 Vertical scroll offset for Help overlay viewport
   }
 
   // 📖 Re-clamp viewport on terminal resize
@@ -2397,6 +2545,7 @@ async function main() {
     const updateRowIdx = providerKeys.length + 1
     const EL = '\x1b[K'
     const lines = []
+    const cursorLineByRow = {}
 
     lines.push('')
     lines.push(`  ${chalk.bold('⚙  Settings')}  ${chalk.dim('— free-coding-models v' + LOCAL_VERSION)}`)
@@ -2439,6 +2588,7 @@ async function main() {
       const bullet = isCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
 
       const row = `${bullet}[ ${enabledBadge} ] ${providerName}  ${keyDisplay.padEnd(30)}  ${testBadge}  ${rateSummary}`
+      cursorLineByRow[i] = lines.length
       lines.push(isCursor ? chalk.bgRgb(30, 30, 60)(row) : row)
     }
 
@@ -2453,6 +2603,11 @@ async function main() {
       lines.push(chalk.dim(`  1) Create a ${selectedMeta.label || selectedSource.name} account: ${selectedMeta.signupUrl || 'signup link missing'}`))
       lines.push(chalk.dim(`  2) ${selectedMeta.signupHint || 'Generate an API key and paste it with Enter on this row'}`))
       lines.push(chalk.dim(`  3) Press ${chalk.yellow('T')} to test your key. Status: ${setupStatus}`))
+      if (selectedProviderKey === 'cloudflare') {
+        const hasAccountId = Boolean((process.env.CLOUDFLARE_ACCOUNT_ID || '').trim())
+        const accountIdStatus = hasAccountId ? chalk.green('CLOUDFLARE_ACCOUNT_ID detected ✅') : chalk.yellow('Set CLOUDFLARE_ACCOUNT_ID ⚠')
+        lines.push(chalk.dim(`  4) Export ${chalk.yellow('CLOUDFLARE_ACCOUNT_ID')} in your shell. Status: ${accountIdStatus}`))
+      }
       lines.push('')
     }
 
@@ -2469,6 +2624,7 @@ async function main() {
       ? chalk.dim('[Config]')
       : chalk.yellow('[Env override]')
     const telemetryRow = `${telemetryRowBullet}${chalk.bold('Anonymous usage analytics').padEnd(44)} ${telemetryStatus}  ${telemetrySource}`
+    cursorLineByRow[telemetryRowIdx] = lines.length
     lines.push(telemetryCursor ? chalk.bgRgb(30, 30, 60)(telemetryRow) : telemetryRow)
 
     lines.push('')
@@ -2490,6 +2646,7 @@ async function main() {
     if (updateState === 'error') updateStatus = chalk.red('Check failed (press U to retry)')
     if (updateState === 'installing') updateStatus = chalk.cyan('Installing update…')
     const updateRow = `${updateBullet}${chalk.bold(updateActionLabel).padEnd(44)} ${updateStatus}`
+    cursorLineByRow[updateRowIdx] = lines.length
     lines.push(updateCursor ? chalk.bgRgb(30, 30, 60)(updateRow) : updateRow)
     if (updateState === 'error' && state.settingsUpdateError) {
       lines.push(chalk.red(`      ${state.settingsUpdateError}`))
@@ -2503,9 +2660,19 @@ async function main() {
     }
     lines.push('')
 
-    const cleared = lines.map(l => l + EL)
-    const remaining = state.terminalRows > 0 ? Math.max(0, state.terminalRows - cleared.length) : 0
-    for (let i = 0; i < remaining; i++) cleared.push(EL)
+    // 📖 Keep selected Settings row visible on small terminals by scrolling the overlay viewport.
+    const targetLine = cursorLineByRow[state.settingsCursor] ?? 0
+    state.settingsScrollOffset = keepOverlayTargetVisible(
+      state.settingsScrollOffset,
+      targetLine,
+      lines.length,
+      state.terminalRows
+    )
+    const { visible, offset } = sliceOverlayLines(lines, state.settingsScrollOffset, state.terminalRows)
+    state.settingsScrollOffset = offset
+
+    const tintedLines = tintOverlayLines(visible, SETTINGS_OVERLAY_BG)
+    const cleared = tintedLines.map(l => l + EL)
     return cleared.join('\n')
   }
 
@@ -2516,7 +2683,7 @@ async function main() {
     const EL = '\x1b[K'
     const lines = []
     lines.push('')
-    lines.push(`  ${chalk.bold('❓ Keyboard Shortcuts')}  ${chalk.dim('— press K or Esc to close')}`)
+    lines.push(`  ${chalk.bold('❓ Keyboard Shortcuts')}  ${chalk.dim('— ↑↓ / PgUp / PgDn / Home / End scroll • K or Esc close')}`)
     lines.push('')
     lines.push(`  ${chalk.bold('Main TUI')}`)
     lines.push(`  ${chalk.bold('Navigation')}`)
@@ -2543,6 +2710,8 @@ async function main() {
     lines.push('')
     lines.push(`  ${chalk.bold('Settings (P)')}`)
     lines.push(`  ${chalk.yellow('↑↓')}           Navigate rows`)
+    lines.push(`  ${chalk.yellow('PgUp/PgDn')}    Jump by page`)
+    lines.push(`  ${chalk.yellow('Home/End')}     Jump first/last row`)
     lines.push(`  ${chalk.yellow('Enter')}        Edit key / toggle analytics / check-install update`)
     lines.push(`  ${chalk.yellow('Space')}        Toggle provider enable/disable`)
     lines.push(`  ${chalk.yellow('T')}            Test selected provider key`)
@@ -2560,9 +2729,11 @@ async function main() {
     lines.push(`  ${chalk.cyan('free-coding-models --no-telemetry')}       ${chalk.dim('Disable telemetry for this run')}`)
     lines.push(`  ${chalk.dim('Flags can be combined: --openclaw --tier S')}`)
     lines.push('')
-    const cleared = lines.map(l => l + EL)
-    const remaining = state.terminalRows > 0 ? Math.max(0, state.terminalRows - cleared.length) : 0
-    for (let i = 0; i < remaining; i++) cleared.push(EL)
+    // 📖 Help overlay can be longer than viewport, so keep a dedicated scroll offset.
+    const { visible, offset } = sliceOverlayLines(lines, state.helpScrollOffset, state.terminalRows)
+    state.helpScrollOffset = offset
+    const tintedLines = tintOverlayLines(visible, HELP_OVERLAY_BG)
+    const cleared = tintedLines.map(l => l + EL)
     return cleared.join('\n')
   }
 
@@ -2637,9 +2808,20 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
 
-    // 📖 Help overlay: Esc or K closes it — handle before everything else so Esc isn't swallowed elsewhere
-    if (state.helpVisible && (key.name === 'escape' || key.name === 'k')) {
-      state.helpVisible = false
+    // 📖 Help overlay: full keyboard navigation + key swallowing while overlay is open.
+    if (state.helpVisible) {
+      const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
+      if (key.name === 'escape' || key.name === 'k') {
+        state.helpVisible = false
+        return
+      }
+      if (key.name === 'up') { state.helpScrollOffset = Math.max(0, state.helpScrollOffset - 1); return }
+      if (key.name === 'down') { state.helpScrollOffset += 1; return }
+      if (key.name === 'pageup') { state.helpScrollOffset = Math.max(0, state.helpScrollOffset - pageStep); return }
+      if (key.name === 'pagedown') { state.helpScrollOffset += pageStep; return }
+      if (key.name === 'home') { state.helpScrollOffset = 0; return }
+      if (key.name === 'end') { state.helpScrollOffset = Number.MAX_SAFE_INTEGER; return }
+      if (key.ctrl && key.name === 'c') { exit(0); return }
       return
     }
 
@@ -2719,6 +2901,28 @@ async function main() {
         return
       }
 
+      if (key.name === 'pageup') {
+        const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
+        state.settingsCursor = Math.max(0, state.settingsCursor - pageStep)
+        return
+      }
+
+      if (key.name === 'pagedown') {
+        const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
+        state.settingsCursor = Math.min(updateRowIdx, state.settingsCursor + pageStep)
+        return
+      }
+
+      if (key.name === 'home') {
+        state.settingsCursor = 0
+        return
+      }
+
+      if (key.name === 'end') {
+        state.settingsCursor = updateRowIdx
+        return
+      }
+
       if (key.name === 'return') {
         if (state.settingsCursor === telemetryRowIdx) {
           ensureTelemetryConfig(state.config)
@@ -2786,6 +2990,7 @@ async function main() {
       state.settingsCursor = 0
       state.settingsEditMode = false
       state.settingsEditBuffer = ''
+      state.settingsScrollOffset = 0
       return
     }
 
@@ -2875,6 +3080,7 @@ async function main() {
     // 📖 Help overlay key: K = toggle help overlay
     if (key.name === 'k') {
       state.helpVisible = !state.helpVisible
+      if (state.helpVisible) state.helpScrollOffset = 0
       return
     }
 
@@ -2893,18 +3099,20 @@ async function main() {
     }
 
     if (key.name === 'up') {
-      if (state.cursor > 0) {
-        state.cursor--
-        adjustScrollOffset(state)
-      }
+      // 📖 Main list wrap navigation: top -> bottom on Up.
+      const count = state.visibleSorted.length
+      if (count === 0) return
+      state.cursor = state.cursor > 0 ? state.cursor - 1 : count - 1
+      adjustScrollOffset(state)
       return
     }
 
     if (key.name === 'down') {
-      if (state.cursor < state.visibleSorted.length - 1) {
-        state.cursor++
-        adjustScrollOffset(state)
-      }
+      // 📖 Main list wrap navigation: bottom -> top on Down.
+      const count = state.visibleSorted.length
+      if (count === 0) return
+      state.cursor = state.cursor < count - 1 ? state.cursor + 1 : 0
+      adjustScrollOffset(state)
       return
     }
 
