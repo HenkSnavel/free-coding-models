@@ -1213,7 +1213,10 @@ const OPENCODE_MODEL_MAP = {
 }
 
 function getOpenCodeModelId(providerKey, modelId) {
-  return OPENCODE_MODEL_MAP[providerKey]?.[modelId] || modelId
+  if (OPENCODE_MODEL_MAP[providerKey]?.[modelId]) return OPENCODE_MODEL_MAP[providerKey][modelId]
+  // 📖 ZAI model IDs are prefixed with "zai/" in sources.js — strip it for OpenCode refs
+  if (providerKey === 'zai') return modelId.replace(/^zai\//, '')
+  return modelId
 }
 
 // 📖 Env var names per provider -- used for passing resolved keys to child processes
