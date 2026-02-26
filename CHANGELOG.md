@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.71
+
+### Changed
+
+- **TUI footer contributors** — moved contributor names to their own line at the bottom for cleaner layout.
+
+---
+
 ## 0.1.70
 
 ### Changed

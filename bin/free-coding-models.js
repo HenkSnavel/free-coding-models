@@ -1301,7 +1301,6 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('  •  ') +
     '🤝 ' +
     chalk.rgb(255, 165, 0)('\x1b]8;;https://github.com/vava-nessa/free-coding-models/graphs/contributors\x1b\\Contributors\x1b]8;;\x1b\\') +
-    chalk.dim(' (vava-nessa • erwinh22 • whit3rabbit • skylaweber)') +
     chalk.dim('  •  ') +
     '💬 ' +
     chalk.rgb(200, 150, 255)('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Discord\x1b]8;;\x1b\\') +
@@ -1310,6 +1309,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('  •  ') +
     chalk.dim('Ctrl+C Exit')
   )
+  lines.push(chalk.dim('  (vava-nessa • erwinh22 • whit3rabbit • skylaweber)'))
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
