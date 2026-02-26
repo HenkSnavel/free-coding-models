@@ -96,8 +96,8 @@ import { createServer as createHttpServer } from 'http'
 import { request as httpsRequest } from 'https'
 import { MODELS, sources } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
-import { getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
-import { loadConfig, saveConfig, getApiKey, isProviderEnabled } from '../lib/config.js'
+import { getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP, scoreModelForTask, getTopRecommendations, TASK_TYPES, PRIORITY_TYPES, CONTEXT_BUDGETS } from '../lib/utils.js'
+import { loadConfig, saveConfig, getApiKey, isProviderEnabled, saveAsProfile, loadProfile, listProfiles, deleteProfile, getActiveProfileName, setActiveProfile, _emptyProfileSettings } from '../lib/config.js'
 
 const require = createRequire(import.meta.url)
 const readline = require('readline')
@@ -763,6 +763,7 @@ const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].
 // 📖 from the main table and from each other.
 const SETTINGS_OVERLAY_BG = chalk.bgRgb(14, 20, 30)
 const HELP_OVERLAY_BG = chalk.bgRgb(24, 16, 32)
+const RECOMMEND_OVERLAY_BG = chalk.bgRgb(10, 25, 15)  // 📖 Green tint for Smart Recommend
 const OVERLAY_PANEL_WIDTH = 116
 
 // 📖 Strip ANSI color/control sequences to estimate visible text width before padding.
@@ -855,7 +856,7 @@ function sliceOverlayLines(lines, offset, terminalRows) {
 // 📖 Keep these constants in sync with renderTable() fixed shell lines.
 // 📖 If this drifts, model rows overflow and can push the title row out of view.
 const TABLE_HEADER_LINES = 4 // 📖 title, spacer, column headers, separator
-const TABLE_FOOTER_LINES = 6 // 📖 spacer, hints, spacer, credit+contributors, discord, spacer
+const TABLE_FOOTER_LINES = 7 // 📖 spacer, hints line 1, hints line 2, spacer, credit+contributors, discord, spacer
 const TABLE_FIXED_LINES = TABLE_HEADER_LINES + TABLE_FOOTER_LINES
 
 // 📖 Computes the visible slice of model rows that fits in the terminal.
@@ -874,18 +875,27 @@ function calculateViewport(terminalRows, scrollOffset, totalModels) {
   return { startIdx: scrollOffset, endIdx, hasAbove, hasBelow }
 }
 
-// 📖 Favorites are always pinned at the top and keep insertion order.
-// 📖 Non-favorites still use the active sort column/direction.
+// 📖 Recommended models are pinned above favorites, favorites above non-favorites.
+// 📖 Recommended: sorted by recommendation score (highest first).
+// 📖 Favorites: keep insertion order (favoriteRank).
+// 📖 Non-favorites: active sort column/direction.
 function sortResultsWithPinnedFavorites(results, sortColumn, sortDirection) {
+  const recommendedRows = results
+    .filter((r) => r.isRecommended && !r.isFavorite)
+    .sort((a, b) => (b.recommendScore || 0) - (a.recommendScore || 0))
   const favoriteRows = results
-    .filter((r) => r.isFavorite)
+    .filter((r) => r.isFavorite && !r.isRecommended)
     .sort((a, b) => a.favoriteRank - b.favoriteRank)
-  const nonFavoriteRows = sortResults(results.filter((r) => !r.isFavorite), sortColumn, sortDirection)
-  return [...favoriteRows, ...nonFavoriteRows]
+  // 📖 Models that are both recommended AND favorite — show in recommended section
+  const bothRows = results
+    .filter((r) => r.isRecommended && r.isFavorite)
+    .sort((a, b) => (b.recommendScore || 0) - (a.recommendScore || 0))
+  const nonSpecialRows = sortResults(results.filter((r) => !r.isFavorite && !r.isRecommended), sortColumn, sortDirection)
+  return [...bothRows, ...recommendedRows, ...favoriteRows, ...nonSpecialRows]
 }
 
 // 📖 renderTable: mode param controls footer hint text (opencode vs openclaw)
-function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilterMode = 0, scrollOffset = 0, terminalRows = 0, originFilterMode = 0) {
+function renderTable(results, pendingPings, frame, cursor = null, sortColumn = 'avg', sortDirection = 'asc', pingInterval = PING_INTERVAL, lastPingTime = Date.now(), mode = 'opencode', tierFilterMode = 0, scrollOffset = 0, terminalRows = 0, originFilterMode = 0, activeProfile = null, profileSaveMode = false, profileSaveBuffer = '') {
   // 📖 Filter out hidden models for display
   const visibleResults = results.filter(r => !r.hidden)
 
@@ -937,6 +947,12 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     }
   }
 
+  // 📖 Profile badge — shown when a named profile is active (Shift+P to cycle, Shift+S to save)
+  let profileBadge = ''
+  if (activeProfile) {
+    profileBadge = chalk.bold.rgb(200, 150, 255)(` [📋 ${activeProfile}]`)
+  }
+
   // 📖 Column widths (generous spacing with margins)
   const W_RANK = 6
   const W_TIER = 6
@@ -955,7 +971,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const sorted = sortResultsWithPinnedFavorites(visibleResults, sortColumn, sortDirection)
 
   const lines = [
-    `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${modeHint}${tierBadge}${originBadge}   ` +
+    `  ${chalk.bold('⚡ Free Coding Models')} ${chalk.dim('v' + LOCAL_VERSION)}${modeBadge}${modeHint}${tierBadge}${originBadge}${profileBadge}   ` +
       chalk.greenBright(`✅ ${up}`) + chalk.dim(' up  ') +
       chalk.yellow(`⏳ ${timeout}`) + chalk.dim(' timeout  ') +
       chalk.red(`❌ ${down}`) + chalk.dim(' down  ') +
@@ -1057,8 +1073,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     const providerName = sources[r.providerKey]?.name ?? r.providerKey ?? 'NIM'
     const source = chalk.green(providerName.padEnd(W_SOURCE))
     // 📖 Favorites: always reserve 2 display columns at the start of Model column.
-    // 📖 ⭐ (2 cols) for favorites, '  ' (2 spaces) for non-favorites — keeps alignment stable.
-    const favoritePrefix = r.isFavorite ? '⭐' : '  '
+    // 📖 🎯 (2 cols) for recommended, ⭐ (2 cols) for favorites, '  ' (2 spaces) for non-favorites — keeps alignment stable.
+    const favoritePrefix = r.isRecommended ? '🎯' : r.isFavorite ? '⭐' : '  '
     const prefixDisplayWidth = 2
     const nameWidth = Math.max(0, W_MODEL - prefixDisplayWidth)
     const name = favoritePrefix + r.label.slice(0, nameWidth).padEnd(nameWidth)
@@ -1244,6 +1260,9 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 
     if (isCursor) {
       lines.push(chalk.bgRgb(50, 0, 60)(row))
+    } else if (r.isRecommended) {
+      // 📖 Medium green background for recommended models (distinguishable from favorites)
+      lines.push(chalk.bgRgb(15, 40, 15)(row))
     } else if (r.isFavorite) {
       lines.push(chalk.bgRgb(35, 20, 0)(row))
     } else {
@@ -1255,7 +1274,12 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     lines.push(chalk.dim(`  ... ${sorted.length - vp.endIdx} more below ...`))
   }
 
-  lines.push('')
+  // 📖 Profile save inline prompt — shown when Shift+S is pressed, replaces spacer line
+  if (profileSaveMode) {
+    lines.push(chalk.bgRgb(40, 20, 60)(`  📋 Save profile as: ${chalk.cyanBright(profileSaveBuffer + '▏')}  ${chalk.dim('Enter save  •  Esc cancel')}`))
+  } else {
+    lines.push('')
+  }
   const intervalSec = Math.round(pingInterval / 1000)
 
   // 📖 Footer hints adapt based on active mode
@@ -1264,7 +1288,10 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  F Favorite  •  R/Y/O/M/L/A/S/C/H/V/B/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  `) + chalk.rgb(255, 100, 50).bold('Z Mode') + chalk.dim(`  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.rgb(0, 255, 80).bold('K Help'))
+  // 📖 Line 1: core navigation + sorting shortcuts
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  `) + chalk.yellow('F') + chalk.dim(` Favorite  •  R/Y/O/M/L/A/S/C/H/V/B/U Sort  •  `) + chalk.yellow('T') + chalk.dim(` Tier  •  `) + chalk.yellow('N') + chalk.dim(` Origin  •  W↓/X↑ (${intervalSec}s)  •  `) + chalk.rgb(255, 100, 50).bold('Z') + chalk.dim(` Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.rgb(0, 255, 80).bold('K') + chalk.dim(` Help`))
+  // 📖 Line 2: profiles, recommend, and extended hints — gives visibility to less-obvious features
+  lines.push(chalk.dim(`  `) + chalk.rgb(200, 150, 255).bold('⇧P') + chalk.dim(` Cycle profile  •  `) + chalk.rgb(200, 150, 255).bold('⇧S') + chalk.dim(` Save profile  •  `) + chalk.rgb(0, 200, 180).bold('Q') + chalk.dim(` Smart Recommend  •  `) + chalk.yellow('E') + chalk.dim(`/`) + chalk.yellow('D') + chalk.dim(` Tier ↑↓  •  `) + chalk.yellow('Esc') + chalk.dim(` Close overlay  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(
     chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') +
@@ -2604,6 +2631,16 @@ async function main() {
   ensureTelemetryConfig(config)
   ensureFavoritesConfig(config)
 
+  // 📖 If --profile <name> was passed, load that profile into the live config
+  if (cliArgs.profileName) {
+    const profileSettings = loadProfile(config, cliArgs.profileName)
+    if (!profileSettings) {
+      console.error(chalk.red(`  Unknown profile "${cliArgs.profileName}". Available: ${listProfiles(config).join(', ') || '(none)'}`))
+      process.exit(1)
+    }
+    saveConfig(config)
+  }
+
   // 📖 Check if any provider has a key — if not, run the first-time setup wizard
   const hasAnyKey = Object.keys(sources).some(pk => !!getApiKey(config, pk))
 
@@ -2747,6 +2784,22 @@ async function main() {
     helpVisible: false,           // 📖 Whether the help overlay (K key) is active
     settingsScrollOffset: 0,      // 📖 Vertical scroll offset for Settings overlay viewport
     helpScrollOffset: 0,          // 📖 Vertical scroll offset for Help overlay viewport
+    // 📖 Smart Recommend overlay state (Q key opens it)
+    recommendOpen: false,         // 📖 Whether the recommend overlay is active
+    recommendPhase: 'questionnaire', // 📖 'questionnaire'|'analyzing'|'results' — current phase
+    recommendCursor: 0,           // 📖 Selected question option (0-based index within current question)
+    recommendQuestion: 0,         // 📖 Which question we're on (0=task, 1=priority, 2=context)
+    recommendAnswers: { taskType: null, priority: null, contextBudget: null }, // 📖 User's answers
+    recommendProgress: 0,         // 📖 Analysis progress percentage (0–100)
+    recommendResults: [],         // 📖 Top N recommendations from getTopRecommendations()
+    recommendScrollOffset: 0,     // 📖 Vertical scroll offset for Recommend overlay viewport
+    recommendAnalysisTimer: null, // 📖 setInterval handle for the 10s analysis phase
+    recommendPingTimer: null,     // 📖 setInterval handle for 2 pings/sec during analysis
+    recommendedKeys: new Set(),   // 📖 Set of "providerKey/modelId" for recommended models (shown in main table)
+    // 📖 Config Profiles state
+    activeProfile: getActiveProfileName(config), // 📖 Currently loaded profile name (or null)
+    profileSaveMode: false,       // 📖 Whether the inline "Save profile" name input is active
+    profileSaveBuffer: '',        // 📖 Typed characters for the profile name being saved
   }
 
   // 📖 Re-clamp viewport on terminal resize
@@ -2912,11 +2965,39 @@ async function main() {
       lines.push(chalk.red(`      ${state.settingsUpdateError}`))
     }
 
+    // 📖 Profiles section — list saved profiles with active indicator + delete support
+    const savedProfiles = listProfiles(state.config)
+    const profileStartIdx = updateRowIdx + 1
+    const maxRowIdx = savedProfiles.length > 0 ? profileStartIdx + savedProfiles.length - 1 : updateRowIdx
+
+    lines.push('')
+    lines.push(`  ${chalk.bold('📋 Profiles')}  ${chalk.dim(savedProfiles.length > 0 ? `(${savedProfiles.length} saved)` : '(none — press Shift+S in main view to save)')}`)
+    lines.push(`  ${chalk.dim('  ' + '─'.repeat(112))}`)
+    lines.push('')
+
+    if (savedProfiles.length === 0) {
+      lines.push(chalk.dim('    No saved profiles. Press Shift+S in the main table to save your current settings as a profile.'))
+    } else {
+      for (let i = 0; i < savedProfiles.length; i++) {
+        const pName = savedProfiles[i]
+        const rowIdx = profileStartIdx + i
+        const isCursor = state.settingsCursor === rowIdx
+        const isActive = state.activeProfile === pName
+        const activeBadge = isActive ? chalk.greenBright(' ✅ active') : ''
+        const bullet = isCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
+        const profileLabel = chalk.rgb(200, 150, 255).bold(pName.padEnd(30))
+        const deleteHint = isCursor ? chalk.dim('  Enter→Load  •  Backspace→Delete') : ''
+        const row = `${bullet}${profileLabel}${activeBadge}${deleteHint}`
+        cursorLineByRow[rowIdx] = lines.length
+        lines.push(isCursor ? chalk.bgRgb(40, 20, 60)(row) : row)
+      }
+    }
+
     lines.push('')
     if (state.settingsEditMode) {
       lines.push(chalk.dim('  Type API key  •  Enter Save  •  Esc Cancel'))
     } else {
-      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key / Toggle analytics / Check-or-Install update  •  Space Toggle enabled  •  T Test key  •  U Check updates  •  Esc Close'))
+      lines.push(chalk.dim('  ↑↓ Navigate  •  Enter Edit key / Toggle / Load profile  •  Space Toggle  •  T Test key  •  U Updates  •  ⌫ Delete profile  •  Esc Close'))
     }
     lines.push('')
 
@@ -2950,7 +3031,7 @@ async function main() {
     lines.push(`  ${chalk.cyan('Rank')}        SWE-bench rank (1 = best coding score)  ${chalk.dim('Sort:')} ${chalk.yellow('R')}`)
     lines.push(`              ${chalk.dim('Quick glance at which model is objectively the best coder right now.')}`)
     lines.push('')
-    lines.push(`  ${chalk.cyan('Tier')}        S+ / S / A+ / A / A- / B+ / B / C based on SWE-bench score  ${chalk.dim('Sort:')} ${chalk.yellow('Y')}`)
+    lines.push(`  ${chalk.cyan('Tier')}        S+ / S / A+ / A / A- / B+ / B / C based on SWE-bench score  ${chalk.dim('Sort:')} ${chalk.yellow('Y')}  ${chalk.dim('Cycle:')} ${chalk.yellow('T')}`)
     lines.push(`              ${chalk.dim('Skip the noise — S/S+ models solve real GitHub issues, C models are for light tasks.')}`)
     lines.push('')
     lines.push(`  ${chalk.cyan('SWE%')}        SWE-bench score — coding ability benchmark (color-coded)  ${chalk.dim('Sort:')} ${chalk.yellow('S')}`)
@@ -2962,7 +3043,7 @@ async function main() {
     lines.push(`  ${chalk.cyan('Model')}       Model name (⭐ = favorited, pinned at top)  ${chalk.dim('Sort:')} ${chalk.yellow('M')}  ${chalk.dim('Favorite:')} ${chalk.yellow('F')}`)
     lines.push(`              ${chalk.dim('Star the ones you like — they stay pinned at the top across restarts.')}`)
     lines.push('')
-    lines.push(`  ${chalk.cyan('Origin')}      Provider source (NIM, Groq, Cerebras, etc.)  ${chalk.dim('Sort:')} ${chalk.yellow('O')}  ${chalk.dim('Filter:')} ${chalk.yellow('N')}`)
+    lines.push(`  ${chalk.cyan('Origin')}      Provider source (NIM, Groq, Cerebras, etc.)  ${chalk.dim('Sort:')} ${chalk.yellow('O')}  ${chalk.dim('Cycle:')} ${chalk.yellow('N')}`)
     lines.push(`              ${chalk.dim('Same model on different providers can have very different speed and uptime.')}`)
     lines.push('')
     lines.push(`  ${chalk.cyan('Latest')}      Most recent ping response time (ms)  ${chalk.dim('Sort:')} ${chalk.yellow('L')}`)
@@ -2989,16 +3070,17 @@ async function main() {
     lines.push(`  ${chalk.yellow('↑↓')}           Navigate rows`)
     lines.push(`  ${chalk.yellow('Enter')}        Select model and launch`)
     lines.push('')
-    lines.push(`  ${chalk.bold('Filters')}`)
-    lines.push(`  ${chalk.yellow('T')}  Cycle tier filter  ${chalk.dim('(All → S+ → S → A+ → A → A- → B+ → B → C → All)')}`)
-    lines.push(`  ${chalk.yellow('N')}  Cycle origin filter  ${chalk.dim('(All → NIM → Groq → Cerebras → ... each provider → All)')}`)
-    lines.push('')
     lines.push(`  ${chalk.bold('Controls')}`)
     lines.push(`  ${chalk.yellow('W')}  Decrease ping interval (faster)`)
     lines.push(`  ${chalk.yellow('X')}  Increase ping interval (slower)`)
     lines.push(`  ${chalk.yellow('Z')}  Cycle launch mode  ${chalk.dim('(OpenCode CLI → OpenCode Desktop → OpenClaw)')}`)
     lines.push(`  ${chalk.yellow('F')}  Toggle favorite on selected row  ${chalk.dim('(⭐ pinned at top, persisted)')}`)
+    lines.push(`  ${chalk.yellow('Q')}  Smart Recommend  ${chalk.dim('(🎯 find the best model for your task — questionnaire + live analysis)')}`)
     lines.push(`  ${chalk.yellow('P')}  Open settings  ${chalk.dim('(manage API keys, provider toggles, analytics, manual update)')}`)
+    lines.push(`  ${chalk.yellow('Shift+P')}  Cycle config profile  ${chalk.dim('(switch between saved profiles live)')}`)
+    lines.push(`  ${chalk.yellow('Shift+S')}  Save current config as a named profile  ${chalk.dim('(inline prompt — type name + Enter)')}`)
+    lines.push(`             ${chalk.dim('Profiles store: favorites, sort, tier filter, ping interval, API keys.')}`)
+    lines.push(`             ${chalk.dim('Use --profile <name> to load a profile on startup.')}`)
     lines.push(`  ${chalk.yellow('K')} / ${chalk.yellow('Esc')}  Show/hide this help`)
     lines.push(`  ${chalk.yellow('Ctrl+C')}  Exit`)
     lines.push('')
@@ -3021,6 +3103,8 @@ async function main() {
     lines.push(`  ${chalk.cyan('free-coding-models --fiable')}             ${chalk.dim('10s reliability analysis')}`)
     lines.push(`  ${chalk.cyan('free-coding-models --tier S|A|B|C')}       ${chalk.dim('Filter by tier letter')}`)
     lines.push(`  ${chalk.cyan('free-coding-models --no-telemetry')}       ${chalk.dim('Disable telemetry for this run')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --recommend')}          ${chalk.dim('Auto-open Smart Recommend on start')}`)
+    lines.push(`  ${chalk.cyan('free-coding-models --profile <name>')}     ${chalk.dim('Load a saved config profile')}`)
     lines.push(`  ${chalk.dim('Flags can be combined: --openclaw --tier S')}`)
     lines.push('')
     // 📖 Help overlay can be longer than viewport, so keep a dedicated scroll offset.
@@ -3029,6 +3113,211 @@ async function main() {
     const tintedLines = tintOverlayLines(visible, HELP_OVERLAY_BG)
     const cleared = tintedLines.map(l => l + EL)
     return cleared.join('\n')
+  }
+
+  // ─── Smart Recommend overlay renderer ─────────────────────────────────────
+  // 📖 renderRecommend: Draw the Smart Recommend overlay with 3 phases:
+  //   1. 'questionnaire' — ask 3 questions (task type, priority, context budget)
+  //   2. 'analyzing' — loading screen with progress bar (10s, 2 pings/sec)
+  //   3. 'results' — show Top 3 recommendations with scores
+  function renderRecommend() {
+    const EL = '\x1b[K'
+    const lines = []
+
+    lines.push('')
+    lines.push(`  ${chalk.bold('🎯 Smart Recommend')}  ${chalk.dim('— find the best model for your task')}`)
+    lines.push('')
+
+    if (state.recommendPhase === 'questionnaire') {
+      // 📖 Question definitions — each has a title, options array, and answer key
+      const questions = [
+        {
+          title: 'What are you working on?',
+          options: Object.entries(TASK_TYPES).map(([key, val]) => ({ key, label: val.label })),
+          answerKey: 'taskType',
+        },
+        {
+          title: 'What matters most?',
+          options: Object.entries(PRIORITY_TYPES).map(([key, val]) => ({ key, label: val.label })),
+          answerKey: 'priority',
+        },
+        {
+          title: 'How big is your context?',
+          options: Object.entries(CONTEXT_BUDGETS).map(([key, val]) => ({ key, label: val.label })),
+          answerKey: 'contextBudget',
+        },
+      ]
+
+      const q = questions[state.recommendQuestion]
+      const qNum = state.recommendQuestion + 1
+      const qTotal = questions.length
+
+      // 📖 Progress breadcrumbs showing answered questions
+      let breadcrumbs = ''
+      for (let i = 0; i < questions.length; i++) {
+        const answered = state.recommendAnswers[questions[i].answerKey]
+        if (i < state.recommendQuestion && answered) {
+          const answeredLabel = questions[i].options.find(o => o.key === answered)?.label || answered
+          breadcrumbs += chalk.greenBright(`  ✓ ${questions[i].title} ${chalk.bold(answeredLabel)}`) + '\n'
+        }
+      }
+      if (breadcrumbs) {
+        lines.push(breadcrumbs.trimEnd())
+        lines.push('')
+      }
+
+      lines.push(`  ${chalk.bold(`Question ${qNum}/${qTotal}:`)} ${chalk.cyan(q.title)}`)
+      lines.push('')
+
+      for (let i = 0; i < q.options.length; i++) {
+        const opt = q.options[i]
+        const isCursor = i === state.recommendCursor
+        const bullet = isCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
+        const label = isCursor ? chalk.bold.white(opt.label) : chalk.white(opt.label)
+        lines.push(`${bullet}${label}`)
+      }
+
+      lines.push('')
+      lines.push(chalk.dim('  ↑↓ navigate  •  Enter select  •  Esc cancel'))
+
+    } else if (state.recommendPhase === 'analyzing') {
+      // 📖 Loading screen with progress bar
+      const pct = Math.min(100, Math.round(state.recommendProgress))
+      const barWidth = 40
+      const filled = Math.round(barWidth * pct / 100)
+      const empty = barWidth - filled
+      const bar = chalk.greenBright('█'.repeat(filled)) + chalk.dim('░'.repeat(empty))
+
+      lines.push(`  ${chalk.bold('Analyzing models...')}`)
+      lines.push('')
+      lines.push(`  ${bar}  ${chalk.bold(String(pct) + '%')}`)
+      lines.push('')
+
+      // 📖 Show what we're doing
+      const taskLabel = TASK_TYPES[state.recommendAnswers.taskType]?.label || '—'
+      const prioLabel = PRIORITY_TYPES[state.recommendAnswers.priority]?.label || '—'
+      const ctxLabel = CONTEXT_BUDGETS[state.recommendAnswers.contextBudget]?.label || '—'
+      lines.push(chalk.dim(`  Task: ${taskLabel}  •  Priority: ${prioLabel}  •  Context: ${ctxLabel}`))
+      lines.push('')
+
+      // 📖 Spinning indicator
+      const spinIdx = state.frame % FRAMES.length
+      lines.push(`  ${chalk.yellow(FRAMES[spinIdx])} Pinging models at 2 pings/sec to gather fresh latency data...`)
+      lines.push('')
+      lines.push(chalk.dim('  Esc to cancel'))
+
+    } else if (state.recommendPhase === 'results') {
+      // 📖 Show Top 3 results with detailed info
+      const taskLabel = TASK_TYPES[state.recommendAnswers.taskType]?.label || '—'
+      const prioLabel = PRIORITY_TYPES[state.recommendAnswers.priority]?.label || '—'
+      const ctxLabel = CONTEXT_BUDGETS[state.recommendAnswers.contextBudget]?.label || '—'
+      lines.push(chalk.dim(`  Task: ${taskLabel}  •  Priority: ${prioLabel}  •  Context: ${ctxLabel}`))
+      lines.push('')
+
+      if (state.recommendResults.length === 0) {
+        lines.push(`  ${chalk.yellow('No models could be scored. Try different criteria or wait for more pings.')}`)
+      } else {
+        lines.push(`  ${chalk.bold('Top Recommendations:')}`)
+        lines.push('')
+
+        for (let i = 0; i < state.recommendResults.length; i++) {
+          const rec = state.recommendResults[i]
+          const r = rec.result
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'
+          const providerName = sources[r.providerKey]?.name ?? r.providerKey
+          const tierFn = TIER_COLOR[r.tier] ?? (t => chalk.white(t))
+          const avg = getAvg(r)
+          const avgStr = avg === Infinity ? '—' : Math.round(avg) + 'ms'
+          const sweStr = r.sweScore ?? '—'
+          const ctxStr = r.ctx ?? '—'
+          const stability = getStabilityScore(r)
+          const stabStr = stability === -1 ? '—' : String(stability)
+
+          const isCursor = i === state.recommendCursor
+          const highlight = isCursor ? chalk.bgRgb(20, 50, 25) : (s => s)
+
+          lines.push(highlight(`  ${medal} ${chalk.bold('#' + (i + 1))}  ${chalk.bold.white(r.label)}  ${chalk.dim('(' + providerName + ')')}`))
+          lines.push(highlight(`       Score: ${chalk.bold.greenBright(String(rec.score) + '/100')}  │  Tier: ${tierFn(r.tier)}  │  SWE: ${chalk.cyan(sweStr)}  │  Avg: ${chalk.yellow(avgStr)}  │  CTX: ${chalk.cyan(ctxStr)}  │  Stability: ${chalk.cyan(stabStr)}`))
+          lines.push('')
+        }
+      }
+
+      lines.push('')
+      lines.push(`  ${chalk.dim('These models are now')} ${chalk.greenBright('highlighted')} ${chalk.dim('and')} 🎯 ${chalk.dim('pinned in the main table.')}`)
+      lines.push('')
+      lines.push(chalk.dim('  ↑↓ navigate  •  Enter select & close  •  Esc close  •  Q new search'))
+    }
+
+    lines.push('')
+    const { visible, offset } = sliceOverlayLines(lines, state.recommendScrollOffset, state.terminalRows)
+    state.recommendScrollOffset = offset
+    const tintedLines = tintOverlayLines(visible, RECOMMEND_OVERLAY_BG)
+    const cleared2 = tintedLines.map(l => l + EL)
+    return cleared2.join('\n')
+  }
+
+  // ─── Smart Recommend: analysis phase controller ────────────────────────────
+  // 📖 startRecommendAnalysis: begins the 10-second analysis phase.
+  // 📖 Pings a random subset of visible models at 2 pings/sec while advancing progress.
+  // 📖 After 10 seconds, computes recommendations and transitions to results phase.
+  function startRecommendAnalysis() {
+    state.recommendPhase = 'analyzing'
+    state.recommendProgress = 0
+    state.recommendResults = []
+
+    const startTime = Date.now()
+    const ANALYSIS_DURATION = 10_000 // 📖 10 seconds
+    const PING_RATE = 500            // 📖 2 pings per second (every 500ms)
+
+    // 📖 Progress updater — runs every 200ms to update the progress bar
+    state.recommendAnalysisTimer = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      state.recommendProgress = Math.min(100, (elapsed / ANALYSIS_DURATION) * 100)
+
+      if (elapsed >= ANALYSIS_DURATION) {
+        // 📖 Analysis complete — compute recommendations
+        clearInterval(state.recommendAnalysisTimer)
+        clearInterval(state.recommendPingTimer)
+        state.recommendAnalysisTimer = null
+        state.recommendPingTimer = null
+
+        const recs = getTopRecommendations(
+          state.results,
+          state.recommendAnswers.taskType,
+          state.recommendAnswers.priority,
+          state.recommendAnswers.contextBudget,
+          3
+        )
+        state.recommendResults = recs
+        state.recommendPhase = 'results'
+        state.recommendCursor = 0
+
+        // 📖 Mark recommended models so the main table can highlight them
+        state.recommendedKeys = new Set(recs.map(rec => toFavoriteKey(rec.result.providerKey, rec.result.modelId)))
+        // 📖 Tag each result object so sortResultsWithPinnedFavorites can pin them
+        state.results.forEach(r => {
+          const key = toFavoriteKey(r.providerKey, r.modelId)
+          const rec = recs.find(rec => toFavoriteKey(rec.result.providerKey, rec.result.modelId) === key)
+          r.isRecommended = !!rec
+          r.recommendScore = rec ? rec.score : 0
+        })
+      }
+    }, 200)
+
+    // 📖 Targeted pinging — ping random visible models at 2/sec for fresh data
+    state.recommendPingTimer = setInterval(() => {
+      const visible = state.results.filter(r => !r.hidden && r.status !== 'noauth')
+      if (visible.length === 0) return
+      // 📖 Pick a random model to ping — spreads load across all models over 10s
+      const target = visible[Math.floor(Math.random() * visible.length)]
+      pingModel(target).catch(() => {})
+    }, PING_RATE)
+  }
+
+  // 📖 stopRecommendAnalysis: cleanup timers if user cancels during analysis
+  function stopRecommendAnalysis() {
+    if (state.recommendAnalysisTimer) { clearInterval(state.recommendAnalysisTimer); state.recommendAnalysisTimer = null }
+    if (state.recommendPingTimer) { clearInterval(state.recommendPingTimer); state.recommendPingTimer = null }
   }
 
   // ─── Settings key test helper ───────────────────────────────────────────────
@@ -3102,6 +3391,45 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
 
+    // 📖 Profile save mode: intercept ALL keys while inline name input is active.
+    // 📖 Enter → save, Esc → cancel, Backspace → delete char, printable → append to buffer.
+    if (state.profileSaveMode) {
+      if (key.ctrl && key.name === 'c') { exit(0); return }
+      if (key.name === 'escape') {
+        // 📖 Cancel profile save — discard typed name
+        state.profileSaveMode = false
+        state.profileSaveBuffer = ''
+        return
+      }
+      if (key.name === 'return') {
+        // 📖 Confirm profile save — persist current TUI settings under typed name
+        const name = state.profileSaveBuffer.trim()
+        if (name.length > 0) {
+          saveAsProfile(state.config, name, {
+            tierFilter: TIER_CYCLE[tierFilterMode],
+            sortColumn: state.sortColumn,
+            sortAsc: state.sortDirection === 'asc',
+            pingInterval: state.pingInterval,
+          })
+          setActiveProfile(state.config, name)
+          state.activeProfile = name
+          saveConfig(state.config)
+        }
+        state.profileSaveMode = false
+        state.profileSaveBuffer = ''
+        return
+      }
+      if (key.name === 'backspace') {
+        state.profileSaveBuffer = state.profileSaveBuffer.slice(0, -1)
+        return
+      }
+      // 📖 Append printable characters (str is the raw character typed)
+      if (str && str.length === 1 && !key.ctrl && !key.meta) {
+        state.profileSaveBuffer += str
+      }
+      return
+    }
+
     // 📖 Help overlay: full keyboard navigation + key swallowing while overlay is open.
     if (state.helpVisible) {
       const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
@@ -3119,11 +3447,122 @@ async function main() {
       return
     }
 
+    // 📖 Smart Recommend overlay: full keyboard handling while overlay is open.
+    if (state.recommendOpen) {
+      if (key.ctrl && key.name === 'c') { exit(0); return }
+
+      if (state.recommendPhase === 'questionnaire') {
+        const questions = [
+          { options: Object.keys(TASK_TYPES), answerKey: 'taskType' },
+          { options: Object.keys(PRIORITY_TYPES), answerKey: 'priority' },
+          { options: Object.keys(CONTEXT_BUDGETS), answerKey: 'contextBudget' },
+        ]
+        const q = questions[state.recommendQuestion]
+
+        if (key.name === 'escape') {
+          // 📖 Cancel recommend — close overlay
+          state.recommendOpen = false
+          state.recommendPhase = 'questionnaire'
+          state.recommendQuestion = 0
+          state.recommendCursor = 0
+          state.recommendAnswers = { taskType: null, priority: null, contextBudget: null }
+          return
+        }
+        if (key.name === 'up') {
+          state.recommendCursor = state.recommendCursor > 0 ? state.recommendCursor - 1 : q.options.length - 1
+          return
+        }
+        if (key.name === 'down') {
+          state.recommendCursor = state.recommendCursor < q.options.length - 1 ? state.recommendCursor + 1 : 0
+          return
+        }
+        if (key.name === 'return') {
+          // 📖 Record answer and advance to next question or start analysis
+          state.recommendAnswers[q.answerKey] = q.options[state.recommendCursor]
+          if (state.recommendQuestion < questions.length - 1) {
+            state.recommendQuestion++
+            state.recommendCursor = 0
+          } else {
+            // 📖 All questions answered — start analysis phase
+            startRecommendAnalysis()
+          }
+          return
+        }
+        return // 📖 Swallow all other keys
+      }
+
+      if (state.recommendPhase === 'analyzing') {
+        if (key.name === 'escape') {
+          // 📖 Cancel analysis — stop timers, return to questionnaire
+          stopRecommendAnalysis()
+          state.recommendOpen = false
+          state.recommendPhase = 'questionnaire'
+          state.recommendQuestion = 0
+          state.recommendCursor = 0
+          state.recommendAnswers = { taskType: null, priority: null, contextBudget: null }
+          return
+        }
+        return // 📖 Swallow all keys during analysis (except Esc and Ctrl+C)
+      }
+
+      if (state.recommendPhase === 'results') {
+        if (key.name === 'escape') {
+          // 📖 Close results — recommendations stay highlighted in main table
+          state.recommendOpen = false
+          return
+        }
+        if (key.name === 'q') {
+          // 📖 Start a new search
+          state.recommendPhase = 'questionnaire'
+          state.recommendQuestion = 0
+          state.recommendCursor = 0
+          state.recommendAnswers = { taskType: null, priority: null, contextBudget: null }
+          state.recommendResults = []
+          state.recommendScrollOffset = 0
+          return
+        }
+        if (key.name === 'up') {
+          const count = state.recommendResults.length
+          if (count === 0) return
+          state.recommendCursor = state.recommendCursor > 0 ? state.recommendCursor - 1 : count - 1
+          return
+        }
+        if (key.name === 'down') {
+          const count = state.recommendResults.length
+          if (count === 0) return
+          state.recommendCursor = state.recommendCursor < count - 1 ? state.recommendCursor + 1 : 0
+          return
+        }
+        if (key.name === 'return') {
+          // 📖 Select the highlighted recommendation — close overlay, jump cursor to it
+          const rec = state.recommendResults[state.recommendCursor]
+          if (rec) {
+            const recKey = toFavoriteKey(rec.result.providerKey, rec.result.modelId)
+            state.recommendOpen = false
+            // 📖 Jump to the recommended model in the main table
+            const idx = state.visibleSorted.findIndex(r => toFavoriteKey(r.providerKey, r.modelId) === recKey)
+            if (idx >= 0) {
+              state.cursor = idx
+              adjustScrollOffset(state)
+            }
+          }
+          return
+        }
+        return // 📖 Swallow all other keys
+      }
+
+      return // 📖 Catch-all swallow
+    }
+
     // ─── Settings overlay keyboard handling ───────────────────────────────────
     if (state.settingsOpen) {
       const providerKeys = Object.keys(sources)
       const telemetryRowIdx = providerKeys.length
       const updateRowIdx = providerKeys.length + 1
+      // 📖 Profile rows start after update row — one row per saved profile
+      const savedProfiles = listProfiles(state.config)
+      const profileStartIdx = updateRowIdx + 1
+      const maxRowIdx = savedProfiles.length > 0 ? profileStartIdx + savedProfiles.length - 1 : updateRowIdx
 
       // 📖 Edit mode: capture typed characters for the API key
       if (state.settingsEditMode) {
@@ -3190,7 +3629,7 @@ async function main() {
         return
       }
 
-      if (key.name === 'down' && state.settingsCursor < updateRowIdx) {
+      if (key.name === 'down' && state.settingsCursor < maxRowIdx) {
         state.settingsCursor++
         return
       }
@@ -3203,7 +3642,7 @@ async function main() {
 
       if (key.name === 'pagedown') {
         const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
-        state.settingsCursor = Math.min(updateRowIdx, state.settingsCursor + pageStep)
+        state.settingsCursor = Math.min(maxRowIdx, state.settingsCursor + pageStep)
         return
       }
 
@@ -3213,7 +3652,7 @@ async function main() {
       }
 
       if (key.name === 'end') {
-        state.settingsCursor = updateRowIdx
+        state.settingsCursor = maxRowIdx
         return
       }
 
@@ -3234,6 +3673,33 @@ async function main() {
           return
         }
 
+        // 📖 Profile row: Enter → load the selected profile (apply its settings live)
+        if (state.settingsCursor >= profileStartIdx && savedProfiles.length > 0) {
+          const profileIdx = state.settingsCursor - profileStartIdx
+          const profileName = savedProfiles[profileIdx]
+          if (profileName) {
+            const settings = loadProfile(state.config, profileName)
+            if (settings) {
+              state.sortColumn = settings.sortColumn || 'avg'
+              state.sortDirection = settings.sortAsc ? 'asc' : 'desc'
+              state.pingInterval = settings.pingInterval || PING_INTERVAL
+              if (settings.tierFilter) {
+                const tierIdx = TIER_CYCLE.indexOf(settings.tierFilter)
+                if (tierIdx >= 0) tierFilterMode = tierIdx
+              } else {
+                tierFilterMode = 0
+              }
+              state.activeProfile = profileName
+              syncFavoriteFlags(state.results, state.config)
+              applyTierFilter()
+              const visible = state.results.filter(r => !r.hidden)
+              state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
+              saveConfig(state.config)
+            }
+          }
+          return
+        }
+
         // 📖 Enter edit mode for the selected provider's key
         const pk = providerKeys[state.settingsCursor]
         state.settingsEditBuffer = state.config.apiKeys?.[pk] ?? ''
@@ -3250,6 +3716,8 @@ async function main() {
           return
         }
         if (state.settingsCursor === updateRowIdx) return
+        // 📖 Profile rows don't respond to Space
+        if (state.settingsCursor >= profileStartIdx) return
 
         // 📖 Toggle enabled/disabled for selected provider
         const pk = providerKeys[state.settingsCursor]
@@ -3262,6 +3730,8 @@ async function main() {
 
       if (key.name === 't') {
         if (state.settingsCursor === telemetryRowIdx || state.settingsCursor === updateRowIdx) return
+        // 📖 Profile rows don't respond to T (test key)
+        if (state.settingsCursor >= profileStartIdx) return
 
         // 📖 Test the selected provider's key (fires a real ping)
         const pk = providerKeys[state.settingsCursor]
@@ -3274,17 +3744,110 @@ async function main() {
         return
       }
 
+      // 📖 Backspace on a profile row → delete that profile
+      if (key.name === 'backspace' && state.settingsCursor >= profileStartIdx && savedProfiles.length > 0) {
+        const profileIdx = state.settingsCursor - profileStartIdx
+        const profileName = savedProfiles[profileIdx]
+        if (profileName) {
+          deleteProfile(state.config, profileName)
+          // 📖 If the deleted profile was active, clear active state
+          if (state.activeProfile === profileName) {
+            setActiveProfile(state.config, null)
+            state.activeProfile = null
+          }
+          saveConfig(state.config)
+          // 📖 Re-clamp cursor after deletion (profile list just got shorter)
+          const newProfiles = listProfiles(state.config)
+          const newMaxRowIdx = newProfiles.length > 0 ? profileStartIdx + newProfiles.length - 1 : updateRowIdx
+          if (state.settingsCursor > newMaxRowIdx) {
+            state.settingsCursor = Math.max(0, newMaxRowIdx)
+          }
+        }
+        return
+      }
+
       if (key.ctrl && key.name === 'c') { exit(0); return }
       return // 📖 Swallow all other keys while settings is open
     }
 
     // 📖 P key: open settings screen
-    if (key.name === 'p') {
+    if (key.name === 'p' && !key.shift) {
       state.settingsOpen = true
       state.settingsCursor = 0
       state.settingsEditMode = false
       state.settingsEditBuffer = ''
       state.settingsScrollOffset = 0
+      return
+    }
+
+    // 📖 Q key: open Smart Recommend overlay
+    if (key.name === 'q') {
+      state.recommendOpen = true
+      state.recommendPhase = 'questionnaire'
+      state.recommendQuestion = 0
+      state.recommendCursor = 0
+      state.recommendAnswers = { taskType: null, priority: null, contextBudget: null }
+      state.recommendResults = []
+      state.recommendScrollOffset = 0
+      return
+    }
+
+    // 📖 Shift+P: cycle through profiles (or show profile picker)
+    if (key.name === 'p' && key.shift) {
+      const profiles = listProfiles(state.config)
+      if (profiles.length === 0) {
+        // 📖 No profiles saved — save current config as 'default' profile
+        saveAsProfile(state.config, 'default', {
+          tierFilter: TIER_CYCLE[tierFilterMode],
+          sortColumn: state.sortColumn,
+          sortAsc: state.sortDirection === 'asc',
+          pingInterval: state.pingInterval,
+        })
+        setActiveProfile(state.config, 'default')
+        state.activeProfile = 'default'
+        saveConfig(state.config)
+      } else {
+        // 📖 Cycle to next profile (or back to null = raw config)
+        const currentIdx = state.activeProfile ? profiles.indexOf(state.activeProfile) : -1
+        const nextIdx = (currentIdx + 1) % (profiles.length + 1) // +1 for "no profile"
+        if (nextIdx === profiles.length) {
+          // 📖 Back to raw config (no profile)
+          setActiveProfile(state.config, null)
+          state.activeProfile = null
+          saveConfig(state.config)
+        } else {
+          const nextProfile = profiles[nextIdx]
+          const settings = loadProfile(state.config, nextProfile)
+          if (settings) {
+            // 📖 Apply profile's TUI settings to live state
+            state.sortColumn = settings.sortColumn || 'avg'
+            state.sortDirection = settings.sortAsc ? 'asc' : 'desc'
+            state.pingInterval = settings.pingInterval || PING_INTERVAL
+            if (settings.tierFilter) {
+              const tierIdx = TIER_CYCLE.indexOf(settings.tierFilter)
+              if (tierIdx >= 0) tierFilterMode = tierIdx
+            } else {
+              tierFilterMode = 0
+            }
+            state.activeProfile = nextProfile
+            // 📖 Rebuild favorites from profile data
+            syncFavoriteFlags(state.results, state.config)
+            applyTierFilter()
+            const visible = state.results.filter(r => !r.hidden)
+            state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
+            state.cursor = 0
+            state.scrollOffset = 0
+            saveConfig(state.config)
+          }
+        }
+      }
+      return
+    }
+
+    // 📖 Shift+S: enter profile save mode — inline text prompt for typing a profile name
+    if (key.name === 's' && key.shift) {
+      state.profileSaveMode = true
+      state.profileSaveBuffer = ''
       return
     }
 
@@ -3296,7 +3859,7 @@ async function main() {
       'l': 'ping', 'a': 'avg', 's': 'swe', 'c': 'ctx', 'h': 'condition', 'v': 'verdict', 'b': 'stability', 'u': 'uptime'
     }
 
-    if (sortKeys[key.name] && !key.ctrl) {
+    if (sortKeys[key.name] && !key.ctrl && !key.shift) {
       const col = sortKeys[key.name]
       // 📖 Toggle direction if same column, otherwise reset to asc
       if (state.sortColumn === col) {
@@ -3472,19 +4035,21 @@ async function main() {
 
   process.stdin.on('keypress', onKeyPress)
 
-  // 📖 Animation loop: render settings overlay OR main table based on state
+  // 📖 Animation loop: render settings overlay, recommend overlay, help overlay, OR main table
   const ticker = setInterval(() => {
     state.frame++
     // 📖 Cache visible+sorted models each frame so Enter handler always matches the display
-    if (!state.settingsOpen) {
+    if (!state.settingsOpen && !state.recommendOpen) {
       const visible = state.results.filter(r => !r.hidden)
       state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
     }
     const content = state.settingsOpen
       ? renderSettings()
-      : state.helpVisible
-        ? renderHelp()
-        : renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode)
+      : state.recommendOpen
+        ? renderRecommend()
+        : state.helpVisible
+          ? renderHelp()
+          : renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode, state.activeProfile, state.profileSaveMode, state.profileSaveBuffer)
     process.stdout.write(ALT_HOME + content)
   }, Math.round(1000 / FPS))
 
@@ -3492,7 +4057,19 @@ async function main() {
   const initialVisible = state.results.filter(r => !r.hidden)
   state.visibleSorted = sortResultsWithPinnedFavorites(initialVisible, state.sortColumn, state.sortDirection)
 
-  process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode))
+  process.stdout.write(ALT_HOME + renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode, state.activeProfile, state.profileSaveMode, state.profileSaveBuffer))
+
+  // 📖 If --recommend was passed, auto-open the Smart Recommend overlay on start
+  if (cliArgs.recommendMode) {
+    state.recommendOpen = true
+    state.recommendPhase = 'questionnaire'
+    state.recommendCursor = 0
+    state.recommendQuestion = 0
+    state.recommendAnswers = { taskType: null, priority: null, contextBudget: null }
+    state.recommendProgress = 0
+    state.recommendResults = []
+    state.recommendScrollOffset = 0
+  }
 
   // ── Continuous ping loop — ping all models every N seconds forever ──────────
 
