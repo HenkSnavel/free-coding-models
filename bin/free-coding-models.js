@@ -1875,12 +1875,14 @@ After installation, you can use: opencode --model ${modelRef}`
       }
 
       // 📖 Register ZAI as an openai-compatible provider pointing to our localhost proxy
+      // 📖 apiKey is required by @ai-sdk/openai-compatible SDK — the proxy handles real auth internally
       if (!config.provider) config.provider = {}
       config.provider.zai = {
         npm: '@ai-sdk/openai-compatible',
         name: 'ZAI',
         options: {
           baseURL: `http://127.0.0.1:${zaiProxyPort}/v1`,
+          apiKey: 'zai-proxy',
         },
         models: {}
       }
