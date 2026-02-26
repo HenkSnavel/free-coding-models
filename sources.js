@@ -27,8 +27,8 @@
  *   📖 Secondary: https://swe-rebench.com (independent evals, scores are lower)
  *   📖 Leaderboard tracker: https://www.marc0.dev/en/leaderboard
  *
- *   @exports nvidiaNim, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai, siliconflow, together, cloudflare, perplexity — model arrays per provider
- *   @exports sources — map of { nvidia, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai, siliconflow, together, cloudflare, perplexity } each with { name, url, models }
+ *   @exports nvidiaNim, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai, siliconflow, together, cloudflare, perplexity, iflow — model arrays per provider
+ *   @exports sources — map of { nvidia, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai, siliconflow, together, cloudflare, perplexity, iflow } each with { name, url, models }
  *   @exports MODELS — flat array of [modelId, label, tier, sweScore, ctx, providerKey]
  *
  *   📖 MODELS now includes providerKey as 6th element so ping() knows which
@@ -290,6 +290,27 @@ export const perplexity = [
   ['sonar',                                    'Sonar',               'B',  '25.0%', '128k'],
 ]
 
+// 📖 iFlow source - https://platform.iflow.cn
+// 📖 OpenAI-compatible endpoint: https://apis.iflow.cn/v1/chat/completions
+// 📖 Free for individual users with no request limits (API key expires every 7 days)
+// 📖 Provides high-performance models including DeepSeek, Qwen3, Kimi K2, GLM, and TBStars2
+export const iflow = [
+  // ── S+ tier — SWE-bench Verified ≥70% ──
+  ['TBStars2-200B-A13B',                      'TBStars2 200B',       'S+', '77.8%', '128k'],
+  ['deepseek-v3.2',                           'DeepSeek V3.2',       'S+', '73.1%', '128k'],
+  ['qwen3-coder-plus',                        'Qwen3 Coder Plus',    'S+', '72.0%', '256k'],
+  ['qwen3-235b-a22b-instruct',                'Qwen3 235B',          'S+', '70.0%', '256k'],
+  ['deepseek-r1',                             'DeepSeek R1',         'S+', '70.6%', '128k'],
+  // ── S tier — SWE-bench Verified 60–70% ──
+  ['kimi-k2',                                 'Kimi K2',             'S',  '65.8%', '128k'],
+  ['kimi-k2-0905',                            'Kimi K2 0905',        'S',  '68.0%', '256k'],
+  ['glm-4.6',                                 'GLM 4.6',             'S',  '62.0%', '200k'],
+  ['deepseek-v3',                             'DeepSeek V3',         'S',  '62.0%', '128k'],
+  // ── A+ tier — SWE-bench Verified 50–60% ──
+  ['qwen3-32b',                               'Qwen3 32B',           'A+', '50.0%', '128k'],
+  ['qwen3-max',                               'Qwen3 Max',           'A+', '55.0%', '256k'],
+]
+
 // 📖 All sources combined - used by the main script
 // 📖 Each source has: name (display), url (API endpoint), models (array of model tuples)
 export const sources = {
@@ -382,6 +403,11 @@ export const sources = {
     name: 'Perplexity',
     url: 'https://api.perplexity.ai/chat/completions',
     models: perplexity,
+  },
+  iflow: {
+    name: 'iFlow',
+    url: 'https://apis.iflow.cn/v1/chat/completions',
+    models: iflow,
   },
 }
 

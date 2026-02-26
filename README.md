@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/npm/v/free-coding-models?color=76b900&label=npm&logo=npm" alt="npm version">
   <img src="https://img.shields.io/node/v/free-coding-models?color=76b900&logo=node.js" alt="node version">
   <img src="https://img.shields.io/npm/l/free-coding-models?color=76b900" alt="license">
-  <img src="https://img.shields.io/badge/models-134-76b900?logo=nvidia" alt="models count">
-  <img src="https://img.shields.io/badge/providers-17-blue" alt="providers count">
+  <img src="https://img.shields.io/badge/models-150-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/providers-19-blue" alt="providers count">
 </p>
 
 <h1 align="center">free-coding-models</h1>
@@ -39,7 +39,7 @@
 
 <p align="center">
   <strong>Find the fastest coding LLM models in seconds</strong><br>
-  <sub>Ping free coding models from 18 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
+  <sub>Ping free coding models from 19 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
@@ -114,7 +114,7 @@ Before using `free-coding-models`, make sure you have:
 3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
 4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** You don't need all seventeen providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
+ > 💡 **Tip:** You don't need all nineteen providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
 
 ---
 
@@ -195,13 +195,13 @@ When you run `free-coding-models` without `--opencode` or `--openclaw`, you get 
 Use `↑↓` arrows to select, `Enter` to confirm. Then the TUI launches with your chosen mode shown in the header badge.
 
 **How it works:**
-1. **Ping phase** — All enabled models are pinged in parallel (up to 139 across 18 providers)
+ 1. **Ping phase** — All enabled models are pinged in parallel (up to 150 across 19 providers)
 2. **Continuous monitoring** — Models are re-pinged every 60 seconds forever
 3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to act
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode or OpenClaw
 
-Setup wizard (first run — walks through all 18 providers):
+ Setup wizard (first run — walks through all 19 providers):
 
 ```
   🔑 First-time setup — API keys
@@ -378,7 +378,7 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 
 ## 🤖 Coding Models
 
-**139 coding models** across 18 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**150 coding models** across 19 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
 
 ### ZAI Coding Plan (5 models)
 

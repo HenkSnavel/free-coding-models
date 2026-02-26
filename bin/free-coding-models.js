@@ -1301,6 +1301,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('  •  ') +
     '🤝 ' +
     chalk.rgb(255, 165, 0)('\x1b]8;;https://github.com/vava-nessa/free-coding-models/graphs/contributors\x1b\\Contributors\x1b]8;;\x1b\\') +
+    chalk.dim(' (vava-nessa • erwinh22 • whit3rabbit • skylaweber)') +
     chalk.dim('  •  ') +
     '💬 ' +
     chalk.rgb(200, 150, 255)('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Discord\x1b]8;;\x1b\\') +
@@ -1575,6 +1576,13 @@ const PROVIDER_METADATA = {
     signupUrl: 'https://z.ai',
     signupHint: 'Sign up and generate an API key',
     rateLimits: 'Free tier (generous quota)',
+  },
+  iflow: {
+    label: 'iFlow',
+    color: chalk.rgb(100, 200, 255),
+    signupUrl: 'https://platform.iflow.cn',
+    signupHint: 'Register → Personal Information → Generate API Key (7-day expiry)',
+    rateLimits: 'Free for individuals (no request limits)',
   },
 }
 
