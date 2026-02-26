@@ -23,7 +23,7 @@
  *   - Settings screen (P key) to manage API keys, provider toggles, analytics, and manual updates
  *   - Favorites system: toggle with F, pin rows to top, persist between sessions
  *   - Uptime percentage tracking (successful pings / total pings)
- *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/U keys)
+ *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/B/U keys)
  *   - Tier filtering via T key (cycles S+→S→A+→A→A-→B+→B→C→All)
  *
  *   → Functions:
@@ -767,6 +767,47 @@ function stripAnsi(input) {
   return String(input).replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\][^\x1b]*\x1b\\/g, '')
 }
 
+// 📖 Calculate display width of a string in terminal columns.
+// 📖 Emojis and other wide characters occupy 2 columns, variation selectors (U+FE0F) are zero-width.
+// 📖 This avoids pulling in a full `string-width` dependency for a lightweight CLI tool.
+function displayWidth(str) {
+  const plain = stripAnsi(String(str))
+  let w = 0
+  for (const ch of plain) {
+    const cp = ch.codePointAt(0)
+    // Zero-width: variation selectors (FE00-FE0F), zero-width joiner/non-joiner, combining marks
+    if ((cp >= 0xFE00 && cp <= 0xFE0F) || cp === 0x200D || cp === 0x200C || cp === 0x20E3) continue
+    // Wide: CJK, emoji (most above U+1F000), fullwidth forms
+    if (
+      cp > 0x1F000 ||                              // emoji & symbols
+      (cp >= 0x2600 && cp <= 0x27BF) ||             // misc symbols, dingbats
+      (cp >= 0x2300 && cp <= 0x23FF) ||             // misc technical (⏳, ⏰, etc.)
+      (cp >= 0x2700 && cp <= 0x27BF) ||             // dingbats
+      (cp >= 0xFE10 && cp <= 0xFE19) ||             // vertical forms
+      (cp >= 0xFF01 && cp <= 0xFF60) ||             // fullwidth ASCII
+      (cp >= 0xFFE0 && cp <= 0xFFE6) ||             // fullwidth signs
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||             // CJK unified
+      (cp >= 0x3000 && cp <= 0x303F) ||             // CJK symbols
+      (cp >= 0x2B50 && cp <= 0x2B55) ||             // stars, circles
+      cp === 0x2705 || cp === 0x2714 || cp === 0x2716 || // check/cross marks
+      cp === 0x26A0                                  // ⚠ warning sign
+    ) {
+      w += 2
+    } else {
+      w += 1
+    }
+  }
+  return w
+}
+
+// 📖 Left-pad (padEnd equivalent) using display width instead of string length.
+// 📖 Ensures columns with emoji text align correctly in the terminal.
+function padEndDisplay(str, width) {
+  const dw = displayWidth(str)
+  const need = Math.max(0, width - dw)
+  return str + ' '.repeat(need)
+}
+
 // 📖 Tint overlay lines with a fixed dark panel width so the background is clearly visible.
 function tintOverlayLines(lines, bgColor) {
   return lines.map((line) => {
@@ -967,7 +1008,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     const padding = ' '.repeat(Math.max(0, W_STAB - plain.length))
     return chalk.dim('Sta') + chalk.white.bold('b') + chalk.dim('ility' + padding)
   })()
-  const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
+  const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padEnd(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
 
   // 📖 Header with proper spacing (column order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Stability, Up%)
   lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sweH_c + '  ' + ctxH_c + '  ' + modelH_c + '  ' + originH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + stabH_c + '  ' + uptimeH_c)
@@ -1008,9 +1049,11 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Show provider name from sources map (NIM / Groq / Cerebras)
     const providerName = sources[r.providerKey]?.name ?? r.providerKey ?? 'NIM'
     const source = chalk.green(providerName.padEnd(W_SOURCE))
-    // 📖 Favorites get a leading star in Model column.
-    const favoritePrefix = r.isFavorite ? '⭐ ' : ''
-    const nameWidth = Math.max(0, W_MODEL - favoritePrefix.length)
+    // 📖 Favorites: always reserve 2 display columns at the start of Model column.
+    // 📖 ⭐ (2 cols) for favorites, '  ' (2 spaces) for non-favorites — keeps alignment stable.
+    const favoritePrefix = r.isFavorite ? '⭐' : '  '
+    const prefixDisplayWidth = 2
+    const nameWidth = Math.max(0, W_MODEL - prefixDisplayWidth)
     const name = favoritePrefix + r.label.slice(0, nameWidth).padEnd(nameWidth)
     const sweScore = r.sweScore ?? '—'
     // 📖 SWE% colorized on the same gradient as Tier:
@@ -1046,7 +1089,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     const latestPing = r.pings.length > 0 ? r.pings[r.pings.length - 1] : null
     let pingCell
     if (!latestPing) {
-      pingCell = chalk.dim('—'.padEnd(W_PING))
+      pingCell = chalk.dim('———'.padEnd(W_PING))
     } else if (latestPing.code === '200') {
       // 📖 Success - show response time
       const str = String(latestPing.ms).padEnd(W_PING)
@@ -1055,8 +1098,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       // 📖 401 = no API key but server IS reachable — still show latency in dim
       pingCell = chalk.dim(String(latestPing.ms).padEnd(W_PING))
     } else {
-      // 📖 Error or timeout - show "—" (error code is already in Status column)
-      pingCell = chalk.dim('—'.padEnd(W_PING))
+      // 📖 Error or timeout - show "———" (error code is already in Status column)
+      pingCell = chalk.dim('———'.padEnd(W_PING))
     }
 
     // 📖 Avg ping (just number, no "ms")
@@ -1066,7 +1109,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       const str = String(avg).padEnd(W_AVG)
       avgCell = avg < 500 ? chalk.greenBright(str) : avg < 1500 ? chalk.yellow(str) : chalk.red(str)
     } else {
-      avgCell = chalk.dim('—'.padEnd(W_AVG))
+      avgCell = chalk.dim('———'.padEnd(W_AVG))
     }
 
     // 📖 Status column - build plain text with emoji, pad, then colorize
@@ -1103,82 +1146,85 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       statusText = '?'
       statusColor = (s) => chalk.dim(s)
     }
-    const status = statusColor(statusText.padEnd(W_STATUS))
+    const status = statusColor(padEndDisplay(statusText, W_STATUS))
 
     // 📖 Verdict column - use getVerdict() for stability-aware verdicts, then render with emoji
     const verdict = getVerdict(r)
     let verdictText, verdictColor
     switch (verdict) {
       case 'Overloaded':
-        verdictText = '🔥 Overloaded'
+        verdictText = 'Overloaded 🔥'
         verdictColor = (s) => chalk.yellow.bold(s)
         break
       case 'Unstable':
-        verdictText = '⚠️ Unstable'
+        verdictText = 'Unstable ⚠️'
         verdictColor = (s) => chalk.magenta(s)
         break
       case 'Not Active':
-        verdictText = '👻 Not Active'
+        verdictText = 'Not Active 👻'
         verdictColor = (s) => chalk.dim(s)
         break
       case 'Pending':
-        verdictText = '⏳ Pending'
+        verdictText = 'Pending ⏳'
         verdictColor = (s) => chalk.dim(s)
         break
       case 'Perfect':
-        verdictText = '🚀 Perfect'
+        verdictText = 'Perfect 🚀'
         verdictColor = (s) => chalk.greenBright(s)
         break
       case 'Spiky':
-        verdictText = '📈 Spiky'
+        verdictText = 'Spiky 📈'
         verdictColor = (s) => chalk.rgb(255, 165, 0)(s)
         break
       case 'Normal':
-        verdictText = '✅ Normal'
+        verdictText = 'Normal ✅'
         verdictColor = (s) => chalk.cyan(s)
         break
       case 'Slow':
-        verdictText = '🐢 Slow'
+        verdictText = 'Slow 🐢'
         verdictColor = (s) => chalk.yellow(s)
         break
       case 'Very Slow':
-        verdictText = '🐌 Very Slow'
+        verdictText = 'Very Slow 🐌'
         verdictColor = (s) => chalk.red(s)
         break
       default:
-        verdictText = '💀 Unusable'
+        verdictText = 'Unusable 💀'
         verdictColor = (s) => chalk.red.bold(s)
         break
     }
-    const speedCell = verdictColor(verdictText.padEnd(W_VERDICT))
+    // 📖 Use padEndDisplay to account for emoji display width (2 cols each) so all rows align
+    const speedCell = verdictColor(padEndDisplay(verdictText, W_VERDICT))
 
     // 📖 Stability column - composite score (0–100) from p95 + jitter + spikes + uptime
+    // 📖 Left-aligned to sit flush under the column header
     const stabScore = getStabilityScore(r)
     let stabCell
     if (stabScore < 0) {
-      stabCell = chalk.dim('—'.padStart(W_STAB))
+      stabCell = chalk.dim('———'.padEnd(W_STAB))
     } else if (stabScore >= 80) {
-      stabCell = chalk.greenBright(String(stabScore).padStart(W_STAB))
+      stabCell = chalk.greenBright(String(stabScore).padEnd(W_STAB))
     } else if (stabScore >= 60) {
-      stabCell = chalk.cyan(String(stabScore).padStart(W_STAB))
+      stabCell = chalk.cyan(String(stabScore).padEnd(W_STAB))
     } else if (stabScore >= 40) {
-      stabCell = chalk.yellow(String(stabScore).padStart(W_STAB))
+      stabCell = chalk.yellow(String(stabScore).padEnd(W_STAB))
     } else {
-      stabCell = chalk.red(String(stabScore).padStart(W_STAB))
+      stabCell = chalk.red(String(stabScore).padEnd(W_STAB))
     }
 
     // 📖 Uptime column - percentage of successful pings
+    // 📖 Left-aligned to sit flush under the column header
     const uptimePercent = getUptime(r)
     const uptimeStr = uptimePercent + '%'
     let uptimeCell
     if (uptimePercent >= 90) {
-      uptimeCell = chalk.greenBright(uptimeStr.padStart(W_UPTIME))
+      uptimeCell = chalk.greenBright(uptimeStr.padEnd(W_UPTIME))
     } else if (uptimePercent >= 70) {
-      uptimeCell = chalk.yellow(uptimeStr.padStart(W_UPTIME))
+      uptimeCell = chalk.yellow(uptimeStr.padEnd(W_UPTIME))
     } else if (uptimePercent >= 50) {
-      uptimeCell = chalk.rgb(255, 165, 0)(uptimeStr.padStart(W_UPTIME)) // orange
+      uptimeCell = chalk.rgb(255, 165, 0)(uptimeStr.padEnd(W_UPTIME)) // orange
     } else {
-      uptimeCell = chalk.red(uptimeStr.padStart(W_UPTIME))
+      uptimeCell = chalk.red(uptimeStr.padEnd(W_UPTIME))
     }
 
     // 📖 Build row with double space between columns (order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Stability, Up%)
@@ -1208,7 +1254,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  F Favorite  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  F Favorite  •  R/Y/O/M/L/A/S/C/H/V/B/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(
     chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') +
