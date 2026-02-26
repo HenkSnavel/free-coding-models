@@ -2,43 +2,252 @@
 
 ---
 
-## 0.1.66
+## 0.1.67
+
+### Added
+
+- **[fork] ZAI provider preserved** — merged upstream v0.1.67 while retaining ZAI (z.ai) provider with 7 GLM models (GLM-5, GLM-4.7, GLM-4.7-Flash, GLM-4.7-FlashX, GLM-4.6, GLM-4.6V-FlashX, GLM-OCR). ZAI prefix stripping, OpenCode/Desktop integration, and provider metadata all carried forward.
+- **Stability Score** — new composite 0–100 metric combining p95 latency (30%), jitter/σ (30%), spike rate (20%), and uptime (20%). Displayed as a color-coded column in the TUI (green ≥80, cyan ≥60, yellow ≥40, red <40).
+- **p95 latency** (`getP95`) — 95th percentile latency from successful pings. Answers "95% of requests are faster than X ms."
+- **Jitter** (`getJitter`) — standard deviation of latency. Low jitter = predictable, high jitter = erratic/spiky.
+- **"Spiky" verdict** — new verdict that catches models with good average latency but terrible tail latency (p95 spikes). A model with avg 250ms but p95 6000ms now gets flagged as "Spiky 📈" instead of "Perfect 🚀".
+- **Stability sorting** — press `B` to sort by stability score. Most stable models rise to the top. `B` key now listed in the footer bar sort keys.
+- 24 new unit tests covering p95, jitter, stability score, Spiky verdict, and stability sorting.
+- **README: TUI Columns reference table** — full 12-column table documenting every column (Rank, Tier, SWE%, Model, Origin, Latest, Avg, Health, Verdict, Stability, Context, Up%).
+- **README: Stability Score section** — documents the formula, weights, color thresholds, and an example calculation.
+- **README: Verdict values table** — lists all 7 verdict categories with their emoji, meaning, and criteria.
 
 ### Changed
-- **Merged with npm v0.1.65**: Rebased local codebase onto latest published version with all upstream improvements
-- **New providers from upstream**: Hugging Face, Replicate, DeepInfra, Fireworks, Codestral, Hyperbolic, Scaleway, Google AI Studio
-- **ZAI provider re-added**: Merged ZAI (GLM-5, GLM-4.7, GLM-4.7-Flash, GLM-4.7-FlashX, GLM-4.6, GLM-4.6V-FlashX, GLM-OCR) back into the upstream codebase
-- **ZAI prefix stripping**: API calls strip `zai/` prefix for z.ai endpoint compatibility
-- **ZAI OpenCode/Desktop support**: Full provider config blocks for OpenCode CLI and Desktop integration
-- **Total model count**: 108 models across 14 providers (101 upstream + 7 ZAI)
+
+- **"Stab" column renamed to "Stability"** — column header widened from 6 to 11 characters; header text now reads `StaBility` with the `B` sort-key letter in uppercase bold yellow.
+- **SWE% column: 8-band color gradient** — replaced the old 3-band color scheme (green ≥50, yellow ≥30, dim otherwise) with an 8-band gradient matching `TIER_COLOR`: ≥70% bright neon green, ≥60% green, ≥50% yellow-green, ≥40% yellow, ≥35% amber, ≥30% orange-red, ≥20% red, <20% dark red.
+- `getVerdict()` is now stability-aware: models in "Perfect" or "Normal" avg range get downgraded to "Spiky" when p95 shows extreme tail latency (requires ≥3 pings to avoid false positives).
+- `findBestModel()` now uses a 4-key sort: status → avg latency → stability score → uptime (was 3-key: status → avg → uptime).
+- `sortResults()` supports new `'stability'` column.
+- `VERDICT_ORDER` updated to include "Spiky" between "Slow" and "Very Slow".
+- **README: keyboard shortcuts** updated to include `B` for Stability sort; "How it works" diagram updated.
+- **Default ping interval → 3 seconds** (was 2s) for a calmer default pace; still adjustable with W/X keys.
+- **Verdict colors unified with TIER_COLOR gradient** — Perfect (cyan-green) → Normal (lime) → Spiky (yellow-green) → Slow (orange) → Very Slow (red-orange) → Overloaded (red) → Unstable (dark red) → Unusable (darkest red). Best→worst ordering in code.
+- **Footer cleanup** — Removed the BETA TUI warning line. Renamed "Join our Discord" to just "Discord" and placed it next to Contributors on the "Made with love" line.
+- **Footer link colors** — Star on GitHub: yellow, Contributors: orange, Discord: light purple. Ctrl+C Exit moved to end of "Made with love" line.
+- **Discord plain URL** — Shows `Discord → https://discord.gg/5MbTnDC3Md` so terminals without OSC 8 link support can still see the URL.
+- **K Help styling** — Changed from green background badge to neon green text (`rgb(0,255,80)`) with no background.
+- **Z Mode styling** — Red-orange color (`rgb(255,100,50)`) matching OpenClaw branding.
+- **Selection row styling** — Darker backgrounds: favorite rows `bgRgb(35,20,0)`, cursor rows `bgRgb(50,0,60)`. Model name and Origin rendered in white bold when selected.
+- **README** — Updated all ping interval references from 2s to 3s; removed BETA warning line.
+
+### Fixed
+
+- **Column alignment: Health/Status emoji width** — Health column used `.padEnd()` which miscounted emoji width (✅, 🔥, ⏳ etc. are 2 terminal columns but counted as fewer). Switched to `padEndDisplay()` so Verdict, Stability, and Up% columns now align correctly.
+- **Verdict emojis moved to end of text** — emojis now appear after the word (e.g., `Perfect 🚀` instead of `🚀 Perfect`) for cleaner left-alignment.
+- **Empty cell placeholders** — changed from single `—` to `———` in Latest Ping, Avg Ping, and Stability columns so empty cells have more visual weight and don't look like blank space.
+
+---
+
+## 0.1.66
+
+### Added
+
+- Added 4 new providers: SiliconFlow, Together AI, Cloudflare Workers AI, and Perplexity API.
+- Added 23 provider models across these new integrations (OpenAI-compatible endpoints + settings onboarding metadata).
+- Added Cloudflare-specific setup guidance in Settings, including explicit `CLOUDFLARE_ACCOUNT_ID` requirement.
+
+### Changed
+
+- Extended provider/env support in config and runtime (`SILICONFLOW_API_KEY`, `TOGETHER_API_KEY`, `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_API_KEY`, `PERPLEXITY_API_KEY`/`PPLX_API_KEY`).
+- Extended OpenCode Desktop provider auto-configuration for SiliconFlow, Together AI, Cloudflare Workers AI, and Perplexity API.
+- Updated README to reflect current provider/model totals (17 providers / 134 models) and expanded key setup + env variable documentation.
+- Updated `P` (Settings) and `K` (Help) overlays with dedicated dark background panels (distinct from the main table) for clearer visual separation.
+
+### Fixed
+
+- Fixed model list scrolling and favorite toggle UX regression introduced after `0.1.65` (cursor/scroll stability when unpinning favorites, last rows reachable).
+- Fixed overlay usability on small terminals: `K` (Help) and `P` (Settings) now use viewport scrolling so all content and top rows remain reachable.
+- Fixed main table keyboard navigation to wrap around: pressing Up on the first row jumps to the last row, and pressing Down on the last row jumps to the first row.
+
+---
+
+## 0.1.65
+
+### Added
+
+- Added persistent model favorites with `F` key toggle, star marker in Model column, dark-orange favorite highlighting, and pinned-at-top behavior.
+- Added manual update maintenance flow in Settings (`P`): check npm updates on demand and install directly from the settings screen.
+- Expanded `K` help overlay with complete keybindings (main TUI + settings) and CLI flags usage examples.
+
+### Changed
+
+- Favorites now remain visible and pinned regardless of active sort or tier/origin filters.
+- Extended config schema (`~/.free-coding-models.json`) with a persisted `favorites` array (`providerKey/modelId` entries).
+- Updated README documentation for favorites, manual updates, settings shortcuts, and config structure.
+
+---
+
+## 0.1.64
+
+### Added
+
+- Added 4 new free providers: Hugging Face Inference, Replicate, DeepInfra, and Fireworks AI (models, key handling, healthchecks, Settings integration).
+- Added richer Settings (`P`) provider rows with inline rate-limit summary and live API key test status.
+
+### Changed
+
+- OpenCode launch now detects `tmux` and auto-injects `--port` (`OPENCODE_PORT` if free, otherwise first available `4096-5095`) so sub-agent panes work reliably.
+- Updated OpenRouter free model set to include `qwen/qwen3-coder:480b-free`, `mistralai/devstral-2-free`, and `mimo-v2-flash-free`.
+- Added SambaNova `Llama3-Groq` coding-tuned entry.
+- Updated setup/config docs and env var support for new providers (`HUGGINGFACE_API_KEY`/`HF_TOKEN`, `REPLICATE_API_TOKEN`, `DEEPINFRA_API_KEY`/`DEEPINFRA_TOKEN`).
+- Replicate pings now use `/v1/predictions` request format; OpenCode launch for Replicate is guarded with a clear monitor-only message.
+- Settings bottom panel now shows provider onboarding steps (signup URL + key creation/test flow) instead of model list details.
+- Documented in `AGENTS.md` that top changelog entries must stay clean for direct reuse in GitHub Release notes.
+
+### Fixed
+
+- Settings/onboarding disabled state now uses an explicit red cross (`❌`) instead of a gray square glyph for better terminal font compatibility.
+
+---
+
+## 0.1.63
+
+### Changed
+
+- Replaced webhook telemetry with PostHog capture API (`/i/v0/e/`) and kept explicit consent + `--no-telemetry` opt-out.
+- Added persistent anonymous telemetry identity in config (`telemetry.anonymousId`) for stable anonymous usage counts.
+- Added telemetry consent screen UX: custom ASCII onboarding, explicit privacy messaging, and “Accept & Continue” default action.
+- Added telemetry toggle in Settings (`P`) and documented env controls: `FREE_CODING_MODELS_TELEMETRY`, `FREE_CODING_MODELS_POSTHOG_KEY`, `FREE_CODING_MODELS_POSTHOG_HOST`.
+- Added telemetry metadata fields: `app_version`, `system` (`macOS`/`Windows`/`Linux`), and `terminal` (Terminal.app/iTerm2/kitty/etc. with fallback).
+- Added telemetry debug mode with `FREE_CODING_MODELS_TELEMETRY_DEBUG=1` (stderr traces for sent/skip/error states).
+- Hardened telemetry safety behavior: analytics failures stay non-blocking and non-TTY runs no longer overwrite stored consent.
+- Fixed consent renderer to avoid full-screen clear side effects and preserve header visibility across terminals.
+- Updated TUI footer contributors link to point to the repository contributors graph.
+
+---
+
+## 0.1.61
+
+### Changed — TUI Footer & UX
+
+- **"Made with" line is now pink**: the entire "Made with 💖 & ☕ by vava-nessa" sentence is now rendered in soft pink (`chalk.rgb(255,150,200)`) including the clickable author name link, making it visually distinct from the rest of the footer
+- **`K Help` badge is now ultra-visible**: changed from plain green background to bright green (`bgGreenBright`) with **black bold text** — high contrast, stands out immediately at a glance in the footer hint line
+- **`P` key closes Settings**: pressing `P` again while inside the Settings screen now closes it (same behavior as `Esc`). Previously only `Esc` worked. Both keys now trigger the same close + provider rebuild logic
+
+---
+
+## 0.1.60
+
+### Changed — TUI Footer
+
+- **Discord URL now shown in plain text**: after the clickable "Join our Discord" hyperlink, the raw URL `https://discord.gg/5MbTnDC3Md` is now printed in cyan, separated by `→`. This helps users on terminals that don't support OSC 8 clickable links to still see and copy-paste the URL.
+
+---
+
+## 0.1.59
+
+### Changed — TUI Footer
+
+- **`K Help` badge in footer is now bright green**: previously plain text, now rendered as `chalk.bgGreen.black.bold(' K Help ')` so it's immediately visible in the footer hint line
+
+---
+
+## 0.1.58
+
+### Changed — TUI
+
+- **Timeout emoji updated**: replaced `⏱` with `⏳` everywhere in the TUI (ping timeout display)
+
+---
+
+## 0.1.57
+
+### Changed — TUI Footer
+
+- **Discord link text shortened**: "Join our Discord" replaces the longer previous label — cleaner footer, same clickable OSC 8 hyperlink
+
+---
+
+## 0.1.56
+
+### Changed — TUI Footer
+
+- **Footer cleaned up and restructured**: removed duplicate/messy lines left by the 0.1.54 agent; consolidated into two clean footer lines:
+  - Line 1: `Made with 💖 & ☕ by vava-nessa  •  ⭐ Star on GitHub` (clickable links)
+  - Line 2: `💬 Join our Discord  •  ⚠ BETA TUI — might crash or have problems`
+- **BETA warning added to TUI footer**: `⚠ BETA TUI` badge in yellow with a plain-text disclaimer, always visible at the bottom of the TUI app
+- **Discord invite in TUI footer**: clickable OSC 8 hyperlink added directly in the footer (was only in README before)
+
+---
+
+## 0.1.55
+
+### Changed — README & Documentation
+
+- **README updated for 9 providers / 101 models**: badges, provider list, Support section, and Requirements section all updated to reflect the new state after 0.1.54
+- **Discord header block reformatted**: replaced the join banner with a plain `💬 Let's talk about the project on Discord` link
+- **BETA warning added to README**: inline `⚠️ free-coding-models is a BETA TUI — expect rough edges and occasional crashes` added to the docs link line in the Support section
+
+---
+
+## 0.1.54
+
+### Added — Providers & Models
+
+**5 new providers** (9 total, 101 models):
+
+- **OpenRouter** — 8 free coding models via the `:free` quota tier (20 req/min, 50 req/day shared). Includes Qwen3 Coder, Step 3.5 Flash, DeepSeek R1 0528, GPT OSS 120B/20B, Nemotron Nano 30B, Llama 3.3 70B. Key prefix: `sk-or-`
+- **Mistral Codestral** — dedicated coding endpoint (`codestral.mistral.ai`), `codestral-latest` model, 30 req/min / 2 000 req/day. Separate API key from the main Mistral platform. Key prefix: `csk-`
+- **Hyperbolic** — $1 free trial credits. 10 models: Qwen3 Coder 480B, DeepSeek R1 0528, Kimi K2, GPT OSS 120B, Qwen3 235B, Qwen3 80B Instruct, DeepSeek V3 0324, Qwen2.5 Coder 32B, Llama 3.3 70B, Llama 3.1 405B. Key prefix: `eyJ`
+- **Scaleway** — 1 million free tokens. 7 models: Devstral 2 123B, Qwen3 235B, GPT OSS 120B, Qwen3 Coder 30B, Llama 3.3 70B, R1 Distill 70B, Mistral Small 3.2. Key prefix: `scw-`
+- **Google AI Studio** — free Gemma 3 models (14 400 req/day, 30 req/min). Gemma 3 27B / 12B / 4B via the OpenAI-compatible `generativelanguage.googleapis.com/v1beta/openai` endpoint. Key prefix: `AIza`
+
+**New models in existing providers:**
+
+- **Groq**: GPT OSS 120B (`openai/gpt-oss-120b`), GPT OSS 20B (`openai/gpt-oss-20b`), Qwen3 32B (`qwen/qwen3-32b`)
+- **Cerebras**: GLM 4.6 (`glm-4.6`) from Z.ai — 10 req/min, 100 req/day
+- **SambaNova**: DeepSeek V3.1 Terminus (`deepseek-ai/DeepSeek-V3.1-Terminus`, S tier 68.4%)
+
+### Added — TUI Features
+
+- **`N` key — Origin/provider filter**: cycles through All → NIM → Groq → Cerebras → SambaNova → OpenRouter → Codestral → Hyperbolic → Scaleway → Google AI → All, mirroring how `T` cycles tiers. The active provider is shown as a badge in the header. The Origin column header now reads `Origin(N)` and highlights in blue when a filter is active.
+- **`C` key — Sort by context window**: the context-window sort was previously on `N`; moved to `C` (mnemonic: Context) to free up `N` for the origin filter.
+- **`K` key — Help overlay**: press `K` (or `Esc`) to open/close a full keyboard shortcut reference listing every key and what it does, rendered in the alt-screen buffer without leaving the TUI.
+- **`Esc` closes help and settings**: pressing Escape now dismisses both the `K` help overlay and the `P` settings screen. The help overlay intercepts Esc before the settings handler so there is no key conflict.
+
+### Changed — README & UI
+
+- Provider count badge updated: **4 → 9 providers**
+- Model count badge updated: **67 → 101 models**
+- Requirements section lists all 9 providers with their signup URLs
+- Discord header block replaced with a plain `💬 Let's talk about the project on Discord` link
+- Support section reformatted: GitHub issues link + Discord link on separate lines + docs link with inline BETA warning (`⚠️ free-coding-models is a BETA TUI — expect rough edges and occasional crashes`)
+- Footer hint line updated: `T Tier  •  N Origin  •  … C` replaces old `N` in sort hint; `K Help` added
+
+### Technical
+
+- `sources.js`: 5 new named exports; `sources` object extended to 9 entries; `@exports` JSDoc updated
+- `lib/config.js`: `ENV_VARS` extended with `openrouter`, `codestral`, `hyperbolic`, `scaleway`, `googleai`; JSDoc config structure comment updated
+- `bin/free-coding-models.js`: first-run wizard extended to 9 providers; `ENV_VAR_NAMES` extended; OpenCode/OpenCode-Desktop provider blocks added for all 5 new providers (all use `@ai-sdk/openai-compatible` + baseURL); `ORIGIN_CYCLE` + `originFilterMode` state; `renderTable` signature gains `originFilterMode` parameter; `renderHelp()` function added; all `renderTable` call sites updated
+
+---
+
+## 0.1.53
+
+### Added
+
+- **SambaNova Cloud** as a new provider ($5 free trial, 3 months). 10 coding models: Qwen3 235B, DeepSeek R1 0528, DeepSeek V3.1, DeepSeek V3 0324, Llama 4 Maverick, GPT OSS 120B, Qwen3 32B, R1 Distill 70B, Llama 3.3 70B, Llama 3.1 8B. OpenAI-compatible endpoint at `api.sambanova.ai`. Key prefix: `sn-`
+- **Cerebras**: Qwen3 235B (`qwen-3-235b-a22b`), GPT OSS 120B (`gpt-oss-120b`), Llama 3.1 8B (`llama3.1-8b`)
+- **Groq**: Llama 3.1 8B (`llama-3.1-8b-instant`, 14 400 req/day)
+- Full OpenCode + OpenCode Desktop integration for SambaNova (`@ai-sdk/openai-compatible` provider block injected automatically on model select)
+- SambaNova added to first-run API key wizard and Settings screen (`P` key)
+
+---
 
 ## 0.1.52
 
-### Added
-- **ZAI Coding Plan support**: Added integration for ZAI provider with GLM model family
-- **New provider**: ZAI with API endpoint `https://api.z.ai/api/paas/v4/chat/completions`
-- **ZAI models**: GLM-5, GLM-4.7, GLM-4.7-Flash, GLM-4.7-FlashX, GLM-4.6, GLM-4.6V-FlashX, GLM-OCR
-- **ZAI provider position**: Added to setup wizard as second provider after NVIDIA NIM
-- **Default configuration**: ZAI provider disabled by default in empty config
+### Fixed
+- **OpenCode model handoff** (PR #14 by @whit3rabbit): API keys from `~/.free-coding-models.json` were not passed to the OpenCode child process, causing silent fallback to the previous model. Also fixes Groq model ID mismatches (e.g. `kimi-k2-instruct` → `kimi-k2-instruct-0905`) via a new `OPENCODE_MODEL_MAP`
+- **OpenClaw nvidia provider missing models array** (PR #13 by @whit3rabbit): `startOpenClaw()` created the nvidia provider block without a `models` property, causing Zod schema validation to reject the config
 
-### Changed
-- **Provider defaults**: Groq, Cerebras, and OpenRouter disabled by default in new configurations
-- **ZAI integration**: ZAI models now properly prefixed with `zai/` for proper provider identification
-- **Environment variable**: `ZAI_API_KEY` for ZAI coding plan API key
-- **Configuration**: ZAI provider added to config file structure
-
-### Changed
-- **Disabled providers**: Groq and Cerebras providers disabled by default in new configurations
-- **Disabled OpenRouter**: OpenRouter provider disabled by default
-- **README updates**: Added ZAI documentation, updated environment variables and config examples
-- **Default config**: New configurations now have Groq, Cerebras, and OpenRouter disabled by default
-
-### Technical Details
-- Added `zai` export to `sources.js` with 7 GLM models
-- Added ZAI to `ENV_VARS` mapping in `lib/config.js`
-- Updated `_emptyConfig()` function to disable Groq, Cerebras, and OpenRouter by default
-- Added `ENV_VARS` export from `lib/config.js` for testing and documentation
-- Updated README with ZAI setup instructions and API reference
+### Improved
+- **Discord link in TUI footer**: the invite URL is now displayed in plain text on a separate line so it's visible and copiable on terminals that don't support clickable links
 
 ---
 

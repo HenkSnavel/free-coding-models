@@ -2,20 +2,20 @@
   <img src="https://img.shields.io/npm/v/free-coding-models?color=76b900&label=npm&logo=npm" alt="npm version">
   <img src="https://img.shields.io/node/v/free-coding-models?color=76b900&logo=node.js" alt="node version">
   <img src="https://img.shields.io/npm/l/free-coding-models?color=76b900" alt="license">
-  <img src="https://img.shields.io/badge/models-53-76b900?logo=nvidia" alt="models count">
-  <img src="https://img.shields.io/badge/providers-3-blue" alt="providers count">
+  <img src="https://img.shields.io/badge/models-134-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/providers-17-blue" alt="providers count">
 </p>
 
 <h1 align="center">free-coding-models</h1>
 
 <p align="center">
-  <strong>Want to contribute or discuss the project?</strong> Join our <a href="https://discord.gg/5MbTnDC3Md">Discord community</a>!
+  💬 <a href="https://discord.gg/5MbTnDC3Md">Let's talk about the project on Discord</a>
 </p>
 
 <p align="center">
 
 ```
-1. Create a free API key (NVIDIA, Groq, or Cerebras)
+1. Create a free API key (NVIDIA, OpenRouter, Hugging Face, etc.)
 2. npm i -g free-coding-models
 3. free-coding-models
 ```
@@ -24,7 +24,7 @@
 
 <p align="center">
   <strong>Find the fastest coding LLM models in seconds</strong><br>
-  <sub>Ping free models from NVIDIA NIM, Groq, and Cerebras in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
+  <sub>Ping free coding models from 17 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
@@ -36,7 +36,9 @@
   <a href="#-requirements">Requirements</a> •
   <a href="#-installation">Installation</a> •
   <a href="#-usage">Usage</a> •
-  <a href="#-models">Models</a> •
+  <a href="#-tui-columns">Columns</a> •
+  <a href="#-stability-score">Stability</a> •
+  <a href="#-coding-models">Models</a> •
   <a href="#-opencode-integration">OpenCode</a> •
   <a href="#-openclaw-integration">OpenClaw</a> •
   <a href="#-how-it-works">How it works</a>
@@ -47,14 +49,15 @@
 ## ✨ Features
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
-- **🌐 Multi-provider** — 53 models from NVIDIA NIM, Groq, and Cerebras — all free to use
-- **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, and test keys live
+- **🌐 Multi-provider** — 141 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, Google AI, SiliconFlow, Together AI, Cloudflare Workers AI, Perplexity API, and ZAI
+- **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, test keys live, and manually check/install updates
 - **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
 - **🏆 Smart ranking** — Top 3 fastest models highlighted with medals 🥇🥈🥉
-- **⏱ Continuous monitoring** — Pings all models every 2 seconds forever, never stops
+- **⏱ Continuous monitoring** — Pings all models every 3 seconds forever, never stops
 - **📈 Rolling averages** — Avg calculated from ALL successful pings since start
 - **📊 Uptime tracking** — Percentage of successful pings shown in real-time
+- **📐 Stability score** — Composite 0–100 score measuring consistency (p95, jitter, spikes, uptime) — a model with 400ms avg and stable responses beats a 250ms avg model that randomly spikes to 6s
 - **🔄 Auto-retry** — Timeout models keep getting retried, nothing is ever "given up on"
 - **🎮 Interactive selection** — Navigate with arrow keys directly in the table, press Enter to act
 - **🔀 Startup mode menu** — Choose between OpenCode and OpenClaw before the TUI launches
@@ -64,6 +67,8 @@
 - **📶 Status indicators** — UP ✅ · No Key 🔑 · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
 - **🔍 Keyless latency** — Models are pinged even without an API key — a `🔑 NO KEY` status confirms the server is reachable with real latency shown, so you can compare providers before committing to a key
 - **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
+- **⭐ Persistent favorites** — Press `F` on a selected row to pin/unpin it; favorites stay at top with a dark orange background and a star before the model name
+- **📊 Privacy-first analytics (optional)** — anonymous PostHog events with explicit consent + opt-out
 
 ---
 
@@ -76,10 +81,25 @@ Before using `free-coding-models`, make sure you have:
    - **NVIDIA NIM** — [build.nvidia.com](https://build.nvidia.com) → Profile → API Keys → Generate
    - **Groq** — [console.groq.com/keys](https://console.groq.com/keys) → Create API Key
    - **Cerebras** — [cloud.cerebras.ai](https://cloud.cerebras.ai) → API Keys → Create
+   - **SambaNova** — [sambanova.ai/developers](https://sambanova.ai/developers) → Developers portal → API key (dev tier generous)
+   - **OpenRouter** — [openrouter.ai/keys](https://openrouter.ai/keys) → Create key (50 req/day, 20/min on `:free`)
+   - **Hugging Face Inference** — [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) → Access Tokens (free monthly credits)
+   - **Replicate** — [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens) → Create token (dev quota)
+   - **DeepInfra** — [deepinfra.com/login](https://deepinfra.com/login) → Login → API key (free dev tier)
+   - **Fireworks AI** — [fireworks.ai](https://fireworks.ai) → Settings → Access Tokens ($1 free credits)
+   - **Mistral Codestral** — [codestral.mistral.ai](https://codestral.mistral.ai) → API Keys (30 req/min, 2000/day — phone required)
+   - **Hyperbolic** — [app.hyperbolic.ai/settings](https://app.hyperbolic.ai/settings) → API Keys ($1 free trial)
+   - **Scaleway** — [console.scaleway.com/iam/api-keys](https://console.scaleway.com/iam/api-keys) → IAM → API Keys (1M free tokens)
+   - **Google AI Studio** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → Get API key (free Gemma models, 14.4K req/day)
+   - **SiliconFlow** — [cloud.siliconflow.cn/account/ak](https://cloud.siliconflow.cn/account/ak) → API Keys (free-model quotas vary by model)
+   - **Together AI** — [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) → API Keys (credits/promotions vary)
+   - **Cloudflare Workers AI** — [dash.cloudflare.com](https://dash.cloudflare.com) → Create API token + set `CLOUDFLARE_ACCOUNT_ID` (Free: 10k neurons/day)
+   - **Perplexity API** — [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api) → API Key (tiered limits by spend)
+   - **ZAI** — [z.ai](https://z.ai) → Get API key (Coding Plan subscription)
 3. **OpenCode** *(optional)* — [Install OpenCode](https://github.com/opencode-ai/opencode) to use the OpenCode integration
 4. **OpenClaw** *(optional)* — [Install OpenClaw](https://openclaw.ai) to use the OpenClaw integration
 
-> 💡 **Tip:** You don't need all three providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
+> 💡 **Tip:** You don't need all seventeen providers. One key is enough to get started. Add more later via the Settings screen (`P` key). Models without a key still show real latency (`🔑 NO KEY`) so you can evaluate providers before signing up.
 
 ---
 
@@ -124,6 +144,9 @@ free-coding-models --best
 # Analyze for 10 seconds and output the most reliable model
 free-coding-models --fiable
 
+# Disable anonymous analytics for this run
+free-coding-models --no-telemetry
+
 # Filter models by tier letter
 free-coding-models --tier S          # S+ and S only
 free-coding-models --tier A          # A+, A, A- only
@@ -157,13 +180,13 @@ When you run `free-coding-models` without `--opencode` or `--openclaw`, you get 
 Use `↑↓` arrows to select, `Enter` to confirm. Then the TUI launches with your chosen mode shown in the header badge.
 
 **How it works:**
-1. **Ping phase** — All enabled models are pinged in parallel (up to 53 across 3 providers)
-2. **Continuous monitoring** — Models are re-pinged every 2 seconds forever
+1. **Ping phase** — All enabled models are pinged in parallel (up to 134 across 17 providers)
+2. **Continuous monitoring** — Models are re-pinged every 3 seconds forever
 3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to act
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode or OpenClaw
 
-Setup wizard (first run — walks through all 3 providers):
+Setup wizard (first run — walks through all 17 providers):
 
 ```
   🔑 First-time setup — API keys
@@ -184,11 +207,16 @@ Setup wizard (first run — walks through all 3 providers):
     API Keys → Create
   Enter key (or Enter to skip):
 
+  ● SambaNova
+    Free key at: https://cloud.sambanova.ai/apis
+    API Keys → Create ($5 free trial, 3 months)
+  Enter key (or Enter to skip):
+
   ✅ 2 key(s) saved to ~/.free-coding-models.json
   You can add or change keys anytime with the P key in the TUI.
 ```
 
-You don't need all three — skip any provider by pressing Enter. At least one key is required.
+You don't need all seventeen — skip any provider by pressing Enter. At least one key is required.
 
 ### Adding or changing keys later
 
@@ -199,20 +227,30 @@ Press **`P`** to open the Settings screen at any time:
 
   Providers
 
-  ❯ [ ✅ ] NIM         nvapi-••••••••••••3f9a  [Test ✅]
-    [ ✅ ] Groq        (no key set)            [Test —]
-    [ ✅ ] Cerebras    (no key set)            [Test —]
+  ❯ [ ✅ ] NVIDIA NIM              nvapi-••••••••••••3f9a  [Test ✅]  Free tier (provider quota by model)
+    [ ✅ ] OpenRouter              (no key set)            [Test —]   50 req/day, 20/min (:free shared quota)
+    [ ✅ ] Hugging Face Inference  (no key set)            [Test —]   Free monthly credits (~$0.10)
 
-  ↑↓ Navigate  •  Enter Edit key  •  Space Toggle enabled  •  T Test key  •  Esc Close
+  Setup Instructions — NVIDIA NIM
+  1) Create a NVIDIA NIM account: https://build.nvidia.com
+  2) Profile → API Keys → Generate
+  3) Press T to test your key
+
+  ↑↓ Navigate  •  Enter Edit key / Check-or-Install update  •  Space Toggle enabled  •  T Test key  •  U Check updates  •  Esc Close
 ```
 
 - **↑↓** — navigate providers
 - **Enter** — enter inline key edit mode (type your key, Enter to save, Esc to cancel)
 - **Space** — toggle provider enabled/disabled
 - **T** — fire a real test ping to verify the key works (shows ✅/❌)
+- **U** — manually check npm for a newer version
 - **Esc** — close settings and reload models list
 
 Keys are saved to `~/.free-coding-models.json` (permissions `0600`).
+
+Analytics toggle is in the same Settings screen (`P`) as a dedicated row (toggle with Enter or Space).
+Manual update is in the same Settings screen (`P`) under **Maintenance** (Enter to check, Enter again to install when an update is available).
+Favorites are also persisted in the same config file and survive restarts.
 
 ### Environment variable overrides
 
@@ -222,9 +260,28 @@ Env vars always take priority over the config file:
 NVIDIA_API_KEY=nvapi-xxx free-coding-models
 GROQ_API_KEY=gsk_xxx free-coding-models
 CEREBRAS_API_KEY=csk_xxx free-coding-models
-OPENROUTER_API_KEY=or-xxx free-coding-models
+OPENROUTER_API_KEY=sk-or-xxx free-coding-models
+HUGGINGFACE_API_KEY=hf_xxx free-coding-models
+REPLICATE_API_TOKEN=r8_xxx free-coding-models
+DEEPINFRA_API_KEY=di_xxx free-coding-models
+FIREWORKS_API_KEY=fw_xxx free-coding-models
+SILICONFLOW_API_KEY=sk_xxx free-coding-models
+TOGETHER_API_KEY=together_xxx free-coding-models
+CLOUDFLARE_API_TOKEN=cf_xxx CLOUDFLARE_ACCOUNT_ID=your_account_id free-coding-models
+PERPLEXITY_API_KEY=pplx_xxx free-coding-models
 ZAI_API_KEY=zai-xxx free-coding-models
+FREE_CODING_MODELS_TELEMETRY=0 free-coding-models
 ```
+
+Telemetry env vars:
+
+- `FREE_CODING_MODELS_TELEMETRY=0|1` — force disable/enable analytics
+- `FREE_CODING_MODELS_POSTHOG_KEY` — PostHog project API key (required to send events)
+- `FREE_CODING_MODELS_POSTHOG_HOST` — optional ingest host (`https://eu.i.posthog.com` default)
+- `FREE_CODING_MODELS_TELEMETRY_DEBUG=1` — optional stderr debug logs for telemetry troubleshooting
+
+On first run (or when consent policy changes), the CLI asks users to accept or decline anonymous analytics.
+When enabled, telemetry events include: event name, app version, selected mode, system (`macOS`/`Windows`/`Linux`), and terminal family (`Terminal.app`, `iTerm2`, `kitty`, `Warp`, `WezTerm`, etc., with generic fallback from `TERM_PROGRAM`/`TERM`).
 
 ### Get your free API keys
 
@@ -242,18 +299,83 @@ ZAI_API_KEY=zai-xxx free-coding-models
 1. Sign up at [cloud.cerebras.ai](https://cloud.cerebras.ai)
 2. Go to API Keys → Create
 
+**OpenRouter** (`:free` models):
+1. Sign up at [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Create API key (`sk-or-...`)
+
+**Hugging Face Inference**:
+1. Sign up at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+2. Create Access Token (`hf_...`)
+
+**Replicate**:
+1. Sign up at [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens)
+2. Create API token (`r8_...`)
+
+**DeepInfra**:
+1. Sign up at [deepinfra.com/login](https://deepinfra.com/login)
+2. Create API key from your account dashboard
+
+**Fireworks AI**:
+1. Sign up at [fireworks.ai](https://fireworks.ai)
+2. Open Settings → Access Tokens and create a token
+
+**Mistral Codestral**:
+1. Sign up at [codestral.mistral.ai](https://codestral.mistral.ai)
+2. Go to API Keys → Create
+
+**Hyperbolic**:
+1. Sign up at [app.hyperbolic.ai/settings](https://app.hyperbolic.ai/settings)
+2. Create an API key in Settings
+
+**Scaleway**:
+1. Sign up at [console.scaleway.com/iam/api-keys](https://console.scaleway.com/iam/api-keys)
+2. Go to IAM → API Keys
+
+**Google AI Studio**:
+1. Sign up at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Create an API key for Gemini/Gemma endpoints
+
+**SiliconFlow**:
+1. Sign up at [cloud.siliconflow.cn/account/ak](https://cloud.siliconflow.cn/account/ak)
+2. Create API key in Account → API Keys
+
+**Together AI**:
+1. Sign up at [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys)
+2. Create an API key in Settings
+
+**Cloudflare Workers AI**:
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Create an API token with Workers AI permissions
+3. Export both `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+
+**Perplexity API**:
+1. Sign up at [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
+2. Create API key (`PERPLEXITY_API_KEY`)
+
 **ZAI Coding Plan** (7 models, GLM family):
 1. Sign up at [z.ai](https://z.ai)
 2. Subscribe to Coding Plan
 3. Get API key from dashboard
 
-> 💡 **Free credits** — NVIDIA, Groq, and Cerebras offer free tiers for developers. ZAI requires Coding Plan subscription.
+> 💡 **Free tiers** — each provider exposes a dev/free tier with its own quotas. ZAI requires a Coding Plan subscription.
 
 ---
 
 ## 🤖 Coding Models
 
-**53 coding models** across 3 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**134 coding models** across 17 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+
+### ZAI Coding Plan (7 models)
+
+| Tier | SWE-bench | Model |
+|------|-----------|-------|
+| — | — | GLM-5 |
+| — | — | GLM-4.7 |
+| — | — | GLM-4.7-Flash |
+| — | — | GLM-4.7-FlashX |
+| — | — | GLM-4.6 |
+| — | — | GLM-4.6V-FlashX |
+| — | — | GLM-OCR |
 
 ### NVIDIA NIM (44 models)
 
@@ -268,7 +390,7 @@ ZAI_API_KEY=zai-xxx free-coding-models
 | **B** 20–30% | R1 Distill 8B (28.2%), R1 Distill 7B (22.6%) |
 | **C** <20% | Gemma 2 9B (18.0%), Phi 4 Mini (14.0%), Phi 3.5 Mini (12.0%) |
 
-### Groq (6 models)
+### Groq (10 models)
 
 | Tier | SWE-bench | Model |
 |------|-----------|-------|
@@ -277,20 +399,13 @@ ZAI_API_KEY=zai-xxx free-coding-models
 | **A** 40–50% | Llama 4 Scout (44.0%), R1 Distill 70B (43.9%) |
 | **A-** 35–40% | Llama 3.3 70B (39.5%) |
 
-### Cerebras (3 models)
+### Cerebras (7 models)
 
 | Tier | SWE-bench | Model |
 |------|-----------|-------|
 | **A+** 50–60% | Qwen3 32B (50.0%) |
 | **A** 40–50% | Llama 4 Scout (44.0%) |
 | **A-** 35–40% | Llama 3.3 70B (39.5%) |
-
-### ZAI Coding Plan (7 models)
-
-| Tier | SWE-bench | Models |
-|------|-----------|--------|
-| **S+** ≥70% | GLM-5 (77.8%), GLM-4.7 (73.8%), GLM-4.7-Flash (73.8%), GLM-4.7-FlashX (73.8%), GLM-4.6 (70.0%), GLM-4.6V-FlashX (70.0%) |
-| **A+** 50–60% | GLM-OCR (60.0%) |
 
 ### Tier scale
 
@@ -321,6 +436,92 @@ Current tier filter is shown in the header badge (e.g., `[Tier S]`)
 
 ---
 
+## 📊 TUI Columns
+
+The main table displays one row per model with the following columns:
+
+| Column | Sort key | Description |
+|--------|----------|-------------|
+| **Rank** | `R` | Position based on current sort order (medals for top 3: 🥇🥈🥉) |
+| **Tier** | `Y` | SWE-bench tier (S+, S, A+, A, A-, B+, B, C) |
+| **SWE%** | `S` | SWE-bench Verified score — the industry-standard benchmark for real GitHub issue resolution |
+| **CTX** | `C` | Context window size in thousands of tokens (e.g. `128k`) |
+| **Model** | `M` | Model display name (favorites show ⭐ prefix) |
+| **Origin** | `N` | Provider name (NIM, Groq, Cerebras, etc.) — press `N` to cycle origin filter |
+| **Latest Ping** | `L` | Most recent round-trip latency in milliseconds |
+| **Avg Ping** | `A` | Rolling average of ALL successful pings since launch |
+| **Health** | `H` | Current status: UP ✅, NO KEY 🔑, Timeout ⏳, Overloaded 🔥, Not Found 🚫 |
+| **Verdict** | `V` | Health verdict based on avg latency + stability analysis (see below) |
+| **Stability** | `B` | Composite 0–100 consistency score (see [Stability Score](#-stability-score)) |
+| **Up%** | `U` | Uptime — percentage of successful pings out of total attempts |
+
+### Verdict values
+
+The Verdict column combines average latency with stability analysis:
+
+| Verdict | Meaning |
+|---------|---------|
+| **Perfect** | Avg < 400ms with stable p95/jitter |
+| **Normal** | Avg < 1000ms, consistent responses |
+| **Slow** | Avg 1000–2000ms |
+| **Spiky** | Good avg but erratic tail latency (p95 >> avg) |
+| **Very Slow** | Avg 2000–5000ms |
+| **Overloaded** | Server returned 429/503 (rate limited or capacity hit) |
+| **Unstable** | Was previously up but now timing out, or avg > 5000ms |
+| **Not Active** | No successful pings yet |
+| **Pending** | First ping still in flight |
+
+---
+
+## 📐 Stability Score
+
+The **Stability** column (sort with `B` key) shows a composite 0–100 score that answers: *"How consistent and predictable is this model?"*
+
+Average latency alone is misleading — a model averaging 250ms that randomly spikes to 6 seconds *feels* slower in practice than a steady 400ms model. The stability score captures this.
+
+### Formula
+
+Four signals are normalized to 0–100 each, then combined with weights:
+
+```
+Stability = 0.30 × p95_score
+          + 0.30 × jitter_score
+          + 0.20 × spike_score
+          + 0.20 × reliability_score
+```
+
+| Component | Weight | What it measures | How it's normalized |
+|-----------|--------|-----------------|---------------------|
+| **p95 latency** | 30% | Tail-latency spikes — the worst 5% of response times | `100 × (1 - p95 / 5000)`, clamped to 0–100 |
+| **Jitter (σ)** | 30% | Erratic response times — standard deviation of ping times | `100 × (1 - jitter / 2000)`, clamped to 0–100 |
+| **Spike rate** | 20% | Fraction of pings above 3000ms | `100 × (1 - spikes / total_pings)` |
+| **Reliability** | 20% | Uptime — fraction of successful HTTP 200 pings | Direct uptime percentage (0–100) |
+
+### Color coding
+
+| Score | Color | Interpretation |
+|-------|-------|----------------|
+| **80–100** | Green | Rock-solid — very consistent, safe to rely on |
+| **60–79** | Cyan | Good — occasional variance but generally stable |
+| **40–59** | Yellow | Shaky — noticeable inconsistency |
+| **< 40** | Red | Unreliable — frequent spikes or failures |
+| **—** | Dim | No data yet (no successful pings) |
+
+### Example
+
+Two models with similar average latency, very different real-world experience:
+
+```
+Model A:  avg 250ms,  p95 6000ms,  jitter 1800ms  →  Stability ~30  (red)
+Model B:  avg 400ms,  p95  650ms,  jitter  120ms  →  Stability ~85  (green)
+```
+
+Model B is the better choice despite its higher average — it won't randomly stall your coding workflow.
+
+> 💡 **Tip:** Sort by Stability (`B` key) after a few minutes of monitoring to find the models that deliver the most predictable performance.
+
+---
+
 ## 🔌 OpenCode Integration
 
 **The easiest way** — let `free-coding-models` do everything:
@@ -332,6 +533,19 @@ Current tier filter is shown in the header badge (e.g., `[Tier S]`)
    - Detects if NVIDIA NIM is configured in OpenCode
    - Sets your selected model as default in `~/.config/opencode/opencode.json`
    - Launches OpenCode with the model ready to use
+
+### tmux sub-agent panes
+
+When launched from an existing `tmux` session, `free-coding-models` now auto-adds an OpenCode `--port` argument so OpenCode/oh-my-opencode can spawn sub-agents in panes.
+
+- Priority 1: reuse `OPENCODE_PORT` if it is valid and free
+- Priority 2: auto-pick the first free port in `4096-5095`
+
+You can force a specific port:
+
+```bash
+OPENCODE_PORT=4098 free-coding-models --opencode
+```
 
 ### Manual OpenCode Setup (Optional)
 
@@ -483,19 +697,19 @@ This script:
 ## ⚙️ How it works
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. Enter alternate screen buffer (like vim/htop/less)      │
-│  2. Ping ALL models in parallel                             │
-│  3. Display real-time table with Latest/Avg/Up% columns     │
-│  4. Re-ping ALL models every 2 seconds (forever)           │
-│  5. Update rolling averages from ALL successful pings      │
-│  6. User can navigate with ↑↓ and select with Enter       │
-│  7. On Enter (OpenCode): set model, launch OpenCode        │
-│  8. On Enter (OpenClaw): update ~/.openclaw/openclaw.json  │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  1. Enter alternate screen buffer (like vim/htop/less)           │
+│  2. Ping ALL models in parallel                                  │
+│  3. Display real-time table with Latest/Avg/Stability/Up%        │
+│  4. Re-ping ALL models every 3 seconds (forever)                │
+│  5. Update rolling averages + stability scores per model        │
+│  6. User can navigate with ↑↓ and select with Enter            │
+│  7. On Enter (OpenCode): set model, launch OpenCode             │
+│  8. On Enter (OpenClaw): update ~/.openclaw/openclaw.json       │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-**Result:** Continuous monitoring interface that stays open until you select a model or press Ctrl+C. Rolling averages give you accurate long-term latency data, uptime percentage tracks reliability, and you can configure your tool of choice with your chosen model in one keystroke.
+**Result:** Continuous monitoring interface that stays open until you select a model or press Ctrl+C. Rolling averages give you accurate long-term latency data, the stability score reveals which models are truly consistent vs. deceptively spikey, and you can configure your tool of choice with one keystroke.
 
 ---
 
@@ -503,13 +717,29 @@ This script:
 
 **Environment variables (override config file):**
 
-| Variable | Provider |
-|----------|----------|
-| `NVIDIA_API_KEY` | NVIDIA NIM |
-| `GROQ_API_KEY` | Groq |
-| `CEREBRAS_API_KEY` | Cerebras |
-| `OPENROUTER_API_KEY` | OpenRouter |
-| `ZAI_API_KEY` | ZAI |
+| Variable | Description |
+|----------|-------------|
+| `NVIDIA_API_KEY` | NVIDIA NIM key |
+| `GROQ_API_KEY` | Groq key |
+| `CEREBRAS_API_KEY` | Cerebras key |
+| `SAMBANOVA_API_KEY` | SambaNova key |
+| `OPENROUTER_API_KEY` | OpenRouter key |
+| `HUGGINGFACE_API_KEY` / `HF_TOKEN` | Hugging Face token |
+| `REPLICATE_API_TOKEN` | Replicate token |
+| `DEEPINFRA_API_KEY` / `DEEPINFRA_TOKEN` | DeepInfra key |
+| `CODESTRAL_API_KEY` | Mistral Codestral key |
+| `HYPERBOLIC_API_KEY` | Hyperbolic key |
+| `SCALEWAY_API_KEY` | Scaleway key |
+| `GOOGLE_API_KEY` | Google AI Studio key |
+| `SILICONFLOW_API_KEY` | SiliconFlow key |
+| `TOGETHER_API_KEY` | Together AI key |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_API_KEY` | Cloudflare Workers AI token/key |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID (required for Workers AI endpoint URL) |
+| `PERPLEXITY_API_KEY` / `PPLX_API_KEY` | Perplexity API key |
+| `ZAI_API_KEY` | ZAI key |
+| `FREE_CODING_MODELS_TELEMETRY` | `0` disables analytics, `1` enables analytics |
+| `FREE_CODING_MODELS_POSTHOG_KEY` | PostHog project API key used for anonymous event capture |
+| `FREE_CODING_MODELS_POSTHOG_HOST` | Optional PostHog ingest host (`https://eu.i.posthog.com` default) |
 
 **Config file:** `~/.free-coding-models.json` (created automatically, permissions `0600`)
 
@@ -519,22 +749,44 @@ This script:
     "nvidia":   "nvapi-xxx",
     "groq":     "gsk_xxx",
     "cerebras": "csk_xxx",
-    "openrouter": "or-xxx",
+    "openrouter": "sk-or-xxx",
+    "huggingface": "hf_xxx",
+    "replicate": "r8_xxx",
+    "deepinfra": "di_xxx",
+    "siliconflow": "sk_xxx",
+    "together": "together_xxx",
+    "cloudflare": "cf_xxx",
+    "perplexity": "pplx_xxx",
     "zai":      "zai-xxx"
   },
   "providers": {
     "nvidia":   { "enabled": true },
-    "groq":     { "enabled": false },
-    "cerebras": { "enabled": false },
-    "openrouter": { "enabled": false },
+    "groq":     { "enabled": true },
+    "cerebras": { "enabled": true },
+    "openrouter": { "enabled": true },
+    "huggingface": { "enabled": true },
+    "replicate": { "enabled": true },
+    "deepinfra": { "enabled": true },
+    "siliconflow": { "enabled": true },
+    "together": { "enabled": true },
+    "cloudflare": { "enabled": true },
+    "perplexity": { "enabled": true },
     "zai":      { "enabled": true }
+  },
+  "favorites": [
+    "nvidia/deepseek-ai/deepseek-v3.2"
+  ],
+  "telemetry": {
+    "enabled": true,
+    "consentVersion": 1,
+    "anonymousId": "anon_550e8400-e29b-41d4-a716-446655440000"
   }
 }
 ```
 
 **Configuration:**
 - **Ping timeout**: 15 seconds per attempt (slow models get more time)
-- **Ping interval**: 2 seconds between complete re-pings of all models (adjustable with W/X keys)
+- **Ping interval**: 3 seconds between complete re-pings of all models (adjustable with W/X keys)
 - **Monitor mode**: Interface stays open forever, press Ctrl+C to exit
 
 **Flags:**
@@ -547,6 +799,7 @@ This script:
 | `--openclaw` | OpenClaw mode — Enter sets selected model as default in OpenClaw |
 | `--best` | Show only top-tier models (A+, S, S+) |
 | `--fiable` | Analyze 10 seconds, output the most reliable model as `provider/model_id` |
+| `--no-telemetry` | Disable anonymous analytics for this run |
 | `--tier S` | Show only S+ and S tier models |
 | `--tier A` | Show only A+, A, A- tier models |
 | `--tier B` | Show only B+, B tier models |
@@ -555,19 +808,24 @@ This script:
 **Keyboard shortcuts (main TUI):**
 - **↑↓** — Navigate models
 - **Enter** — Select model (launches OpenCode or sets OpenClaw default, depending on mode)
-- **R/Y/O/M/L/A/S/N/H/V/U** — Sort by Rank/Tier/Origin/Model/LatestPing/Avg/SWE/Ctx/Health/Verdict/Uptime
+- **R/Y/O/M/L/A/S/N/H/V/B/U** — Sort by Rank/Tier/Origin/Model/LatestPing/Avg/SWE/Ctx/Health/Verdict/Stability/Uptime
+- **F** — Toggle favorite on selected model (⭐ in Model column, pinned at top)
 - **T** — Cycle tier filter (All → S+ → S → A+ → A → A- → B+ → B → C → All)
 - **Z** — Cycle mode (OpenCode CLI → OpenCode Desktop → OpenClaw)
-- **P** — Open Settings (manage API keys, enable/disable providers)
+- **P** — Open Settings (manage API keys, provider toggles, analytics toggle, manual update)
 - **W** — Decrease ping interval (faster pings)
 - **X** — Increase ping interval (slower pings)
+- **K** / **Esc** — Show/hide help overlay
 - **Ctrl+C** — Exit
 
+Pressing **K** now shows a full in-app reference: main hotkeys, settings hotkeys, and CLI flags with usage examples.
+
 **Keyboard shortcuts (Settings screen — `P` key):**
-- **↑↓** — Navigate providers
-- **Enter** — Edit API key inline (type key, Enter to save, Esc to cancel)
-- **Space** — Toggle provider enabled/disabled
+- **↑↓** — Navigate providers, analytics row, and maintenance row
+- **Enter** — Edit API key inline, toggle analytics on analytics row, or check/install update on maintenance row
+- **Space** — Toggle provider enabled/disabled, or toggle analytics on analytics row
 - **T** — Test current provider's API key (fires a live ping)
+- **U** — Check for updates manually from settings
 - **Esc** — Close settings and return to main TUI
 
 ---
@@ -621,4 +879,7 @@ We welcome contributions! Feel free to open issues, submit pull requests, or get
 **A:** No — `free-coding-models` configures OpenClaw to use NVIDIA NIM's remote API, so models run on NVIDIA's infrastructure. No GPU or local setup required.
 
 ## 📧 Support
-For questions or issues, open a GitHub issue or join our community Discord: https://discord.gg/5MbTnDC3Md
+
+For questions or issues, open a [GitHub issue](https://github.com/vava-nessa/free-coding-models/issues).
+
+💬 Let's talk about the project on Discord: https://discord.gg/5MbTnDC3Md

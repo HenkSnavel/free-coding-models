@@ -27,8 +27,8 @@
  *   📖 Secondary: https://swe-rebench.com (independent evals, scores are lower)
  *   📖 Leaderboard tracker: https://www.marc0.dev/en/leaderboard
  *
- *   @exports nvidiaNim, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai — model arrays per provider
- *   @exports sources — map of { nvidia, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai } each with { name, url, models }
+ *   @exports nvidiaNim, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai, siliconflow, together, cloudflare, perplexity — model arrays per provider
+ *   @exports sources — map of { nvidia, groq, cerebras, sambanova, openrouter, huggingface, replicate, deepinfra, fireworks, codestral, hyperbolic, scaleway, googleai, siliconflow, together, cloudflare, perplexity } each with { name, url, models }
  *   @exports MODELS — flat array of [modelId, label, tier, sweScore, ctx, providerKey]
  *
  *   📖 MODELS now includes providerKey as 6th element so ping() knows which
@@ -244,6 +244,54 @@ export const zai = [
   ['zai/glm-ocr',                                         'GLM-OCR',             'A+', '60.0%', '128k'],
 ]
 
+// 📖 SiliconFlow source - https://cloud.siliconflow.cn
+// 📖 OpenAI-compatible endpoint: https://api.siliconflow.com/v1/chat/completions
+// 📖 Free model quotas vary by model and can change over time.
+export const siliconflow = [
+  ['Qwen/Qwen3-Coder-480B-A35B-Instruct',      'Qwen3 Coder 480B',   'S+', '70.6%', '256k'],
+  ['deepseek-ai/DeepSeek-V3.2',                'DeepSeek V3.2',      'S+', '73.1%', '128k'],
+  ['Qwen/Qwen3-235B-A22B',                     'Qwen3 235B',         'S+', '70.0%', '128k'],
+  ['deepseek-ai/DeepSeek-R1',                  'DeepSeek R1',        'S',  '61.0%', '128k'],
+  ['Qwen/Qwen3-Coder-30B-A3B-Instruct',        'Qwen3 Coder 30B',    'A+', '55.0%', '32k'],
+  ['Qwen/Qwen2.5-Coder-32B-Instruct',          'Qwen2.5 Coder 32B',  'A',  '46.0%', '32k'],
+]
+
+// 📖 Together AI source - https://api.together.ai
+// 📖 OpenAI-compatible endpoint: https://api.together.xyz/v1/chat/completions
+// 📖 Credits/promotions vary by account and region; verify current quota in console.
+export const together = [
+  ['moonshotai/Kimi-K2.5',                     'Kimi K2.5',          'S+', '76.8%', '128k'],
+  ['Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8',  'Qwen3 Coder 480B',   'S+', '70.6%', '256k'],
+  ['deepseek-ai/DeepSeek-V3.1',                'DeepSeek V3.1',      'S',  '62.0%', '128k'],
+  ['deepseek-ai/DeepSeek-R1',                  'DeepSeek R1',        'S',  '61.0%', '128k'],
+  ['openai/gpt-oss-120b',                      'GPT OSS 120B',       'S',  '60.0%', '128k'],
+  ['openai/gpt-oss-20b',                       'GPT OSS 20B',        'A',  '42.0%', '128k'],
+  ['meta-llama/Llama-3.3-70B-Instruct-Turbo',  'Llama 3.3 70B',      'A-', '39.5%', '128k'],
+]
+
+// 📖 Cloudflare Workers AI source - https://developers.cloudflare.com/workers-ai
+// 📖 OpenAI-compatible endpoint requires account id:
+// 📖 https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions
+// 📖 Free plan includes daily neuron quota and provider-level request limits.
+export const cloudflare = [
+  ['@cf/openai/gpt-oss-120b',                  'GPT OSS 120B',       'S',  '60.0%', '128k'],
+  ['@cf/qwen/qwen2.5-coder-32b-instruct',      'Qwen2.5 Coder 32B',  'A',  '46.0%', '32k'],
+  ['@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', 'R1 Distill 32B', 'A',  '43.9%', '128k'],
+  ['@cf/openai/gpt-oss-20b',                   'GPT OSS 20B',        'A',  '42.0%', '128k'],
+  ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'Llama 3.3 70B',      'A-', '39.5%', '128k'],
+  ['@cf/meta/llama-3.1-8b-instruct',           'Llama 3.1 8B',       'B',  '28.8%', '128k'],
+]
+
+// 📖 Perplexity source - https://docs.perplexity.ai
+// 📖 Chat Completions endpoint: https://api.perplexity.ai/chat/completions
+// 📖 Sonar models focus on search/reasoning and have tiered API rate limits.
+export const perplexity = [
+  ['sonar-reasoning-pro',                      'Sonar Reasoning Pro', 'A+', '50.0%', '128k'],
+  ['sonar-reasoning',                          'Sonar Reasoning',     'A',  '45.0%', '128k'],
+  ['sonar-pro',                                'Sonar Pro',           'B+', '32.0%', '128k'],
+  ['sonar',                                    'Sonar',               'B',  '25.0%', '128k'],
+]
+
 // 📖 All sources combined - used by the main script
 // 📖 Each source has: name (display), url (API endpoint), models (array of model tuples)
 export const sources = {
@@ -316,6 +364,26 @@ export const sources = {
     name: 'ZAI',
     url: 'https://api.z.ai/api/coding/paas/v4/chat/completions',
     models: zai,
+  },
+  siliconflow: {
+    name: 'SiliconFlow',
+    url: 'https://api.siliconflow.com/v1/chat/completions',
+    models: siliconflow,
+  },
+  together: {
+    name: 'Together AI',
+    url: 'https://api.together.xyz/v1/chat/completions',
+    models: together,
+  },
+  cloudflare: {
+    name: 'Cloudflare AI',
+    url: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions',
+    models: cloudflare,
+  },
+  perplexity: {
+    name: 'Perplexity',
+    url: 'https://api.perplexity.ai/chat/completions',
+    models: perplexity,
   },
 }
 

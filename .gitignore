@@ -47,3 +47,6 @@ Thumbs.db
 # package-lock.json
 # pnpm-lock.yaml
 # yarn.lock
+
+# 11. Local-only telemetry POC (kept out of this repo on purpose)
+private-telemetry/

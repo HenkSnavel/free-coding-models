@@ -23,7 +23,7 @@
  *   - Settings screen (P key) to manage API keys, provider toggles, analytics, and manual updates
  *   - Favorites system: toggle with F, pin rows to top, persist between sessions
  *   - Uptime percentage tracking (successful pings / total pings)
- *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/U keys)
+ *   - Sortable columns (R/Y/O/M/L/A/S/N/H/V/B/U keys)
  *   - Tier filtering via T key (cycles S+→S→A+→A→A-→B+→B→C→All)
  *
  *   → Functions:
@@ -60,7 +60,9 @@
  *   ⚙️ Configuration:
  *   - API keys stored per-provider in ~/.free-coding-models.json (0600 perms)
  *   - Old ~/.free-coding-models plain-text auto-migrated as nvidia key on first run
- *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, HUGGINGFACE_API_KEY/HF_TOKEN, REPLICATE_API_TOKEN, DEEPINFRA_API_KEY/DEEPINFRA_TOKEN, FIREWORKS_API_KEY, etc.
+ *   - Env vars override config: NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, HUGGINGFACE_API_KEY/HF_TOKEN, REPLICATE_API_TOKEN, DEEPINFRA_API_KEY/DEEPINFRA_TOKEN, FIREWORKS_API_KEY, SILICONFLOW_API_KEY, TOGETHER_API_KEY, PERPLEXITY_API_KEY, ZAI_API_KEY, etc.
+ *   - ZAI (z.ai) uses a non-standard base path; cloudflare needs CLOUDFLARE_ACCOUNT_ID in env.
+ *   - Cloudflare Workers AI requires both CLOUDFLARE_API_TOKEN (or CLOUDFLARE_API_KEY) and CLOUDFLARE_ACCOUNT_ID
  *   - Models loaded from sources.js — all provider/model definitions are centralized there
  *   - OpenCode config: ~/.config/opencode/opencode.json
  *   - OpenClaw config: ~/.openclaw/openclaw.json
@@ -92,7 +94,7 @@ import { join, dirname } from 'path'
 import { createServer } from 'net'
 import { MODELS, sources } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
-import { getAvg, getVerdict, getUptime, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
+import { getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP } from '../lib/utils.js'
 import { loadConfig, saveConfig, getApiKey, isProviderEnabled } from '../lib/config.js'
 
 const require = createRequire(import.meta.url)
@@ -716,7 +718,7 @@ const ALT_HOME   = '\x1b[H'
 // 📖 This allows easy addition of new model sources beyond NVIDIA NIM
 
 const PING_TIMEOUT  = 15_000   // 📖 15s per attempt before abort - slow models get more time
-const PING_INTERVAL = 2_000    // 📖 Ping all models every 2 seconds in continuous mode
+const PING_INTERVAL = 3_000    // 📖 Ping all models every 3 seconds in continuous mode
 
 const FPS          = 12
 const COL_MODEL    = 22
@@ -754,6 +756,93 @@ const msCell = (ms) => {
 const FRAMES = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
 // 📖 Spinner cell: braille (1-wide) + padding to fill CELL_W visual chars
 const spinCell = (f, o = 0) => chalk.dim.yellow(FRAMES[(f + o) % FRAMES.length].padEnd(CELL_W))
+
+// 📖 Overlay-specific backgrounds so Settings (P) and Help (K) are visually distinct
+// 📖 from the main table and from each other.
+const SETTINGS_OVERLAY_BG = chalk.bgRgb(14, 20, 30)
+const HELP_OVERLAY_BG = chalk.bgRgb(24, 16, 32)
+const OVERLAY_PANEL_WIDTH = 116
+
+// 📖 Strip ANSI color/control sequences to estimate visible text width before padding.
+function stripAnsi(input) {
+  return String(input).replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\][^\x1b]*\x1b\\/g, '')
+}
+
+// 📖 Calculate display width of a string in terminal columns.
+// 📖 Emojis and other wide characters occupy 2 columns, variation selectors (U+FE0F) are zero-width.
+// 📖 This avoids pulling in a full `string-width` dependency for a lightweight CLI tool.
+function displayWidth(str) {
+  const plain = stripAnsi(String(str))
+  let w = 0
+  for (const ch of plain) {
+    const cp = ch.codePointAt(0)
+    // Zero-width: variation selectors (FE00-FE0F), zero-width joiner/non-joiner, combining marks
+    if ((cp >= 0xFE00 && cp <= 0xFE0F) || cp === 0x200D || cp === 0x200C || cp === 0x20E3) continue
+    // Wide: CJK, emoji (most above U+1F000), fullwidth forms
+    if (
+      cp > 0x1F000 ||                              // emoji & symbols
+      (cp >= 0x2600 && cp <= 0x27BF) ||             // misc symbols, dingbats
+      (cp >= 0x2300 && cp <= 0x23FF) ||             // misc technical (⏳, ⏰, etc.)
+      (cp >= 0x2700 && cp <= 0x27BF) ||             // dingbats
+      (cp >= 0xFE10 && cp <= 0xFE19) ||             // vertical forms
+      (cp >= 0xFF01 && cp <= 0xFF60) ||             // fullwidth ASCII
+      (cp >= 0xFFE0 && cp <= 0xFFE6) ||             // fullwidth signs
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||             // CJK unified
+      (cp >= 0x3000 && cp <= 0x303F) ||             // CJK symbols
+      (cp >= 0x2B50 && cp <= 0x2B55) ||             // stars, circles
+      cp === 0x2705 || cp === 0x2714 || cp === 0x2716 || // check/cross marks
+      cp === 0x26A0                                  // ⚠ warning sign
+    ) {
+      w += 2
+    } else {
+      w += 1
+    }
+  }
+  return w
+}
+
+// 📖 Left-pad (padEnd equivalent) using display width instead of string length.
+// 📖 Ensures columns with emoji text align correctly in the terminal.
+function padEndDisplay(str, width) {
+  const dw = displayWidth(str)
+  const need = Math.max(0, width - dw)
+  return str + ' '.repeat(need)
+}
+
+// 📖 Tint overlay lines with a fixed dark panel width so the background is clearly visible.
+function tintOverlayLines(lines, bgColor) {
+  return lines.map((line) => {
+    const text = String(line)
+    const visibleWidth = stripAnsi(text).length
+    const padding = ' '.repeat(Math.max(0, OVERLAY_PANEL_WIDTH - visibleWidth))
+    return bgColor(text + padding)
+  })
+}
+
+// 📖 Clamp overlay scroll to valid bounds for the current terminal height.
+function clampOverlayOffset(offset, totalLines, terminalRows) {
+  const viewportRows = Math.max(1, terminalRows || 1)
+  const maxOffset = Math.max(0, totalLines - viewportRows)
+  return Math.max(0, Math.min(maxOffset, offset))
+}
+
+// 📖 Ensure a target line is visible inside overlay viewport (used by Settings cursor).
+function keepOverlayTargetVisible(offset, targetLine, totalLines, terminalRows) {
+  const viewportRows = Math.max(1, terminalRows || 1)
+  let next = clampOverlayOffset(offset, totalLines, terminalRows)
+  if (targetLine < next) next = targetLine
+  else if (targetLine >= next + viewportRows) next = targetLine - viewportRows + 1
+  return clampOverlayOffset(next, totalLines, terminalRows)
+}
+
+// 📖 Slice overlay lines to terminal viewport and pad with blanks to avoid stale frames.
+function sliceOverlayLines(lines, offset, terminalRows) {
+  const viewportRows = Math.max(1, terminalRows || 1)
+  const nextOffset = clampOverlayOffset(offset, lines.length, terminalRows)
+  const visible = lines.slice(nextOffset, nextOffset + viewportRows)
+  while (visible.length < viewportRows) visible.push('')
+  return { visible, offset: nextOffset }
+}
 
 // ─── Table renderer ───────────────────────────────────────────────────────────
 
@@ -857,6 +946,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const W_AVG = 11
   const W_STATUS = 18
   const W_VERDICT = 14
+  const W_STAB = 11
   const W_UPTIME = 6
 
   // 📖 Sort models using the shared helper
@@ -886,6 +976,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const avgH     = sortColumn === 'avg' ? dir + ' Avg Ping' : 'Avg Ping'
   const healthH  = sortColumn === 'condition' ? dir + ' Health' : 'Health'
   const verdictH = sortColumn === 'verdict' ? dir + ' Verdict' : 'Verdict'
+  const stabH    = sortColumn === 'stability' ? dir + ' Stability' : 'Stability'
   const uptimeH  = sortColumn === 'uptime' ? dir + ' Up%' : 'Up%'
 
   // 📖 Helper to colorize first letter for keyboard shortcuts
@@ -901,10 +992,14 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   // 📖 Now colorize after padding is calculated on plain text
   const rankH_c    = colorFirst(rankH, W_RANK)
   const tierH_c    = colorFirst('Tier', W_TIER)
-  const originLabel = 'Origin(N)'
+  const originLabel = 'Origin'
   const originH_c  = sortColumn === 'origin'
     ? chalk.bold.cyan(originLabel.padEnd(W_SOURCE))
-    : (originFilterMode > 0 ? chalk.bold.rgb(100, 200, 255)(originLabel.padEnd(W_SOURCE)) : colorFirst(originLabel, W_SOURCE))
+    : (originFilterMode > 0 ? chalk.bold.rgb(100, 200, 255)(originLabel.padEnd(W_SOURCE)) : (() => {
+      // 📖 Custom colorization for Origin: highlight 'N' (the filter key) at the end
+      const padding = ' '.repeat(Math.max(0, W_SOURCE - originLabel.length))
+      return chalk.dim('Origi') + chalk.yellow('N') + chalk.dim(padding)
+    })())
   const modelH_c   = colorFirst(modelH, W_MODEL)
   const sweH_c     = sortColumn === 'swe' ? chalk.bold.cyan(sweH.padEnd(W_SWE)) : colorFirst(sweH, W_SWE)
   const ctxH_c     = sortColumn === 'ctx' ? chalk.bold.cyan(ctxH.padEnd(W_CTX)) : colorFirst(ctxH, W_CTX)
@@ -912,10 +1007,16 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
   const avgH_c     = sortColumn === 'avg' ? chalk.bold.cyan(avgH.padEnd(W_AVG)) : colorFirst('Avg Ping', W_AVG)
   const healthH_c  = sortColumn === 'condition' ? chalk.bold.cyan(healthH.padEnd(W_STATUS)) : colorFirst('Health', W_STATUS)
   const verdictH_c = sortColumn === 'verdict' ? chalk.bold.cyan(verdictH.padEnd(W_VERDICT)) : colorFirst(verdictH, W_VERDICT)
-  const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padStart(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
+  // 📖 Custom colorization for Stability: highlight 'B' (the sort key) since 'S' is taken by SWE
+  const stabH_c    = sortColumn === 'stability' ? chalk.bold.cyan(stabH.padEnd(W_STAB)) : (() => {
+    const plain = 'Stability'
+    const padding = ' '.repeat(Math.max(0, W_STAB - plain.length))
+    return chalk.dim('Sta') + chalk.white.bold('B') + chalk.dim('ility' + padding)
+  })()
+  const uptimeH_c  = sortColumn === 'uptime' ? chalk.bold.cyan(uptimeH.padEnd(W_UPTIME)) : colorFirst(uptimeH, W_UPTIME, chalk.green)
 
-  // 📖 Header with proper spacing (column order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
-  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sweH_c + '  ' + ctxH_c + '  ' + modelH_c + '  ' + originH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + uptimeH_c)
+  // 📖 Header with proper spacing (column order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Stability, Up%)
+  lines.push('  ' + rankH_c + '  ' + tierH_c + '  ' + sweH_c + '  ' + ctxH_c + '  ' + modelH_c + '  ' + originH_c + '  ' + pingH_c + '  ' + avgH_c + '  ' + healthH_c + '  ' + verdictH_c + '  ' + stabH_c + '  ' + uptimeH_c)
 
   // 📖 Separator line
   lines.push(
@@ -930,6 +1031,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('─'.repeat(W_AVG)) + '  ' +
     chalk.dim('─'.repeat(W_STATUS)) + '  ' +
     chalk.dim('─'.repeat(W_VERDICT)) + '  ' +
+    chalk.dim('─'.repeat(W_STAB)) + '  ' +
     chalk.dim('─'.repeat(W_UPTIME))
   )
 
@@ -952,16 +1054,32 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     // 📖 Show provider name from sources map (NIM / Groq / Cerebras)
     const providerName = sources[r.providerKey]?.name ?? r.providerKey ?? 'NIM'
     const source = chalk.green(providerName.padEnd(W_SOURCE))
-    // 📖 Favorites get a leading star in Model column.
-    const favoritePrefix = r.isFavorite ? '⭐ ' : ''
-    const nameWidth = Math.max(0, W_MODEL - favoritePrefix.length)
+    // 📖 Favorites: always reserve 2 display columns at the start of Model column.
+    // 📖 ⭐ (2 cols) for favorites, '  ' (2 spaces) for non-favorites — keeps alignment stable.
+    const favoritePrefix = r.isFavorite ? '⭐' : '  '
+    const prefixDisplayWidth = 2
+    const nameWidth = Math.max(0, W_MODEL - prefixDisplayWidth)
     const name = favoritePrefix + r.label.slice(0, nameWidth).padEnd(nameWidth)
     const sweScore = r.sweScore ?? '—'
-    const sweCell = sweScore !== '—' && parseFloat(sweScore) >= 50 
-      ? chalk.greenBright(sweScore.padEnd(W_SWE))
-      : sweScore !== '—' && parseFloat(sweScore) >= 30
-      ? chalk.yellow(sweScore.padEnd(W_SWE))
-      : chalk.dim(sweScore.padEnd(W_SWE))
+    // 📖 SWE% colorized on the same gradient as Tier:
+    //   ≥70% bright neon green (S+), ≥60% green (S), ≥50% yellow-green (A+),
+    //   ≥40% yellow (A), ≥35% amber (A-), ≥30% orange-red (B+),
+    //   ≥20% red (B), <20% dark red (C), '—' dim
+    let sweCell
+    if (sweScore === '—') {
+      sweCell = chalk.dim(sweScore.padEnd(W_SWE))
+    } else {
+      const sweVal = parseFloat(sweScore)
+      const swePadded = sweScore.padEnd(W_SWE)
+      if (sweVal >= 70)      sweCell = chalk.bold.rgb(0,   255,  80)(swePadded)
+      else if (sweVal >= 60) sweCell = chalk.bold.rgb(80,  220,   0)(swePadded)
+      else if (sweVal >= 50) sweCell = chalk.bold.rgb(170, 210,   0)(swePadded)
+      else if (sweVal >= 40) sweCell = chalk.rgb(240, 190,   0)(swePadded)
+      else if (sweVal >= 35) sweCell = chalk.rgb(255, 130,   0)(swePadded)
+      else if (sweVal >= 30) sweCell = chalk.rgb(255,  70,   0)(swePadded)
+      else if (sweVal >= 20) sweCell = chalk.rgb(210,  20,   0)(swePadded)
+      else                   sweCell = chalk.rgb(140,   0,   0)(swePadded)
+    }
     
     // 📖 Context window column - colorized by size (larger = better)
     const ctxRaw = r.ctx ?? '—'
@@ -976,7 +1094,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     const latestPing = r.pings.length > 0 ? r.pings[r.pings.length - 1] : null
     let pingCell
     if (!latestPing) {
-      pingCell = chalk.dim('—'.padEnd(W_PING))
+      pingCell = chalk.dim('———'.padEnd(W_PING))
     } else if (latestPing.code === '200') {
       // 📖 Success - show response time
       const str = String(latestPing.ms).padEnd(W_PING)
@@ -985,8 +1103,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       // 📖 401 = no API key but server IS reachable — still show latency in dim
       pingCell = chalk.dim(String(latestPing.ms).padEnd(W_PING))
     } else {
-      // 📖 Error or timeout - show "—" (error code is already in Status column)
-      pingCell = chalk.dim('—'.padEnd(W_PING))
+      // 📖 Error or timeout - show "———" (error code is already in Status column)
+      pingCell = chalk.dim('———'.padEnd(W_PING))
     }
 
     // 📖 Avg ping (just number, no "ms")
@@ -996,7 +1114,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       const str = String(avg).padEnd(W_AVG)
       avgCell = avg < 500 ? chalk.greenBright(str) : avg < 1500 ? chalk.yellow(str) : chalk.red(str)
     } else {
-      avgCell = chalk.dim('—'.padEnd(W_AVG))
+      avgCell = chalk.dim('———'.padEnd(W_AVG))
     }
 
     // 📖 Status column - build plain text with emoji, pad, then colorize
@@ -1033,64 +1151,99 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       statusText = '?'
       statusColor = (s) => chalk.dim(s)
     }
-    const status = statusColor(statusText.padEnd(W_STATUS))
+    const status = statusColor(padEndDisplay(statusText, W_STATUS))
 
-    // 📖 Verdict column - build plain text with emoji, pad, then colorize
-    const wasUpBefore = r.pings.length > 0 && r.pings.some(p => p.code === '200')
+    // 📖 Verdict column - use getVerdict() for stability-aware verdicts, then render with emoji
+    const verdict = getVerdict(r)
     let verdictText, verdictColor
-    if (r.httpCode === '429') {
-      verdictText = '🔥 Overloaded'
-      verdictColor = (s) => chalk.yellow.bold(s)
-    } else if ((r.status === 'timeout' || r.status === 'down') && wasUpBefore) {
-      verdictText = '⚠️ Unstable'
-      verdictColor = (s) => chalk.magenta(s)
-    } else if (r.status === 'timeout' || r.status === 'down') {
-      verdictText = '👻 Not Active'
-      verdictColor = (s) => chalk.dim(s)
-    } else if (avg === Infinity) {
-      verdictText = '⏳ Pending'
-      verdictColor = (s) => chalk.dim(s)
-    } else if (avg < 400) {
-      verdictText = '🚀 Perfect'
-      verdictColor = (s) => chalk.greenBright(s)
-    } else if (avg < 1000) {
-      verdictText = '✅ Normal'
-      verdictColor = (s) => chalk.cyan(s)
-    } else if (avg < 3000) {
-      verdictText = '🐢 Slow'
-      verdictColor = (s) => chalk.yellow(s)
-    } else if (avg < 5000) {
-      verdictText = '🐌 Very Slow'
-      verdictColor = (s) => chalk.red(s)
-    } else {
-      verdictText = '💀 Unusable'
-      verdictColor = (s) => chalk.red.bold(s)
+    // 📖 Verdict colors follow the same green→red gradient as TIER_COLOR / SWE%
+    switch (verdict) {
+      case 'Perfect':
+        verdictText = 'Perfect 🚀'
+        verdictColor = (s) => chalk.bold.rgb(0, 255, 180)(s)    // bright cyan-green — stands out from Normal
+        break
+      case 'Normal':
+        verdictText = 'Normal ✅'
+        verdictColor = (s) => chalk.bold.rgb(140, 200, 0)(s)    // lime-yellow — clearly warmer than Perfect
+        break
+      case 'Spiky':
+        verdictText = 'Spiky 📈'
+        verdictColor = (s) => chalk.bold.rgb(170, 210, 0)(s)    // A+ yellow-green
+        break
+      case 'Slow':
+        verdictText = 'Slow 🐢'
+        verdictColor = (s) => chalk.bold.rgb(255, 130, 0)(s)    // A- amber
+        break
+      case 'Very Slow':
+        verdictText = 'Very Slow 🐌'
+        verdictColor = (s) => chalk.bold.rgb(255, 70, 0)(s)     // B+ orange-red
+        break
+      case 'Overloaded':
+        verdictText = 'Overloaded 🔥'
+        verdictColor = (s) => chalk.bold.rgb(210, 20, 0)(s)     // B red
+        break
+      case 'Unstable':
+        verdictText = 'Unstable ⚠️'
+        verdictColor = (s) => chalk.bold.rgb(175, 10, 0)(s)     // between B and C
+        break
+      case 'Not Active':
+        verdictText = 'Not Active 👻'
+        verdictColor = (s) => chalk.dim(s)
+        break
+      case 'Pending':
+        verdictText = 'Pending ⏳'
+        verdictColor = (s) => chalk.dim(s)
+        break
+      default:
+        verdictText = 'Unusable 💀'
+        verdictColor = (s) => chalk.bold.rgb(140, 0, 0)(s)      // C dark red
+        break
     }
-    const speedCell = verdictColor(verdictText.padEnd(W_VERDICT))
+    // 📖 Use padEndDisplay to account for emoji display width (2 cols each) so all rows align
+    const speedCell = verdictColor(padEndDisplay(verdictText, W_VERDICT))
+
+    // 📖 Stability column - composite score (0–100) from p95 + jitter + spikes + uptime
+    // 📖 Left-aligned to sit flush under the column header
+    const stabScore = getStabilityScore(r)
+    let stabCell
+    if (stabScore < 0) {
+      stabCell = chalk.dim('———'.padEnd(W_STAB))
+    } else if (stabScore >= 80) {
+      stabCell = chalk.greenBright(String(stabScore).padEnd(W_STAB))
+    } else if (stabScore >= 60) {
+      stabCell = chalk.cyan(String(stabScore).padEnd(W_STAB))
+    } else if (stabScore >= 40) {
+      stabCell = chalk.yellow(String(stabScore).padEnd(W_STAB))
+    } else {
+      stabCell = chalk.red(String(stabScore).padEnd(W_STAB))
+    }
 
     // 📖 Uptime column - percentage of successful pings
+    // 📖 Left-aligned to sit flush under the column header
     const uptimePercent = getUptime(r)
     const uptimeStr = uptimePercent + '%'
     let uptimeCell
     if (uptimePercent >= 90) {
-      uptimeCell = chalk.greenBright(uptimeStr.padStart(W_UPTIME))
+      uptimeCell = chalk.greenBright(uptimeStr.padEnd(W_UPTIME))
     } else if (uptimePercent >= 70) {
-      uptimeCell = chalk.yellow(uptimeStr.padStart(W_UPTIME))
+      uptimeCell = chalk.yellow(uptimeStr.padEnd(W_UPTIME))
     } else if (uptimePercent >= 50) {
-      uptimeCell = chalk.rgb(255, 165, 0)(uptimeStr.padStart(W_UPTIME)) // orange
+      uptimeCell = chalk.rgb(255, 165, 0)(uptimeStr.padEnd(W_UPTIME)) // orange
     } else {
-      uptimeCell = chalk.red(uptimeStr.padStart(W_UPTIME))
+      uptimeCell = chalk.red(uptimeStr.padEnd(W_UPTIME))
     }
 
-    // 📖 Build row with double space between columns (order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Up%)
-    const row = '  ' + num + '  ' + tier + '  ' + sweCell + '  ' + ctxCell + '  ' + name + '  ' + source + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + uptimeCell
+    // 📖 When cursor is on this row, render Model and Origin in bright white for readability
+    const nameCell = isCursor ? chalk.white.bold(favoritePrefix + r.label.slice(0, nameWidth).padEnd(nameWidth)) : name
+    const sourceCell = isCursor ? chalk.white.bold(providerName.padEnd(W_SOURCE)) : source
 
-    if (isCursor && r.isFavorite) {
-      lines.push(chalk.bgRgb(120, 60, 0)(row))
-    } else if (isCursor) {
-      lines.push(chalk.bgRgb(139, 0, 139)(row))
+    // 📖 Build row with double space between columns (order: Rank, Tier, SWE%, CTX, Model, Origin, Latest Ping, Avg Ping, Health, Verdict, Stability, Up%)
+    const row = '  ' + num + '  ' + tier + '  ' + sweCell + '  ' + ctxCell + '  ' + nameCell + '  ' + sourceCell + '  ' + pingCell + '  ' + avgCell + '  ' + status + '  ' + speedCell + '  ' + stabCell + '  ' + uptimeCell
+
+    if (isCursor) {
+      lines.push(chalk.bgRgb(50, 0, 60)(row))
     } else if (r.isFavorite) {
-      lines.push(chalk.bgRgb(90, 45, 0)(row))
+      lines.push(chalk.bgRgb(35, 20, 0)(row))
     } else {
       lines.push(row)
     }
@@ -1109,19 +1262,24 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     : mode === 'opencode-desktop'
       ? chalk.rgb(0, 200, 255)('Enter→OpenDesktop')
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
-  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  F Favorite  •  R/Y/O/M/L/A/S/C/H/V/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  Z Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.bgGreenBright.black.bold(' K Help ') + chalk.dim(`  •  Ctrl+C Exit`))
+  lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  F Favorite  •  R/Y/O/M/L/A/S/C/H/V/B/U Sort  •  T Tier  •  N Origin  •  W↓/X↑ (${intervalSec}s)  •  `) + chalk.rgb(255, 100, 50).bold('Z Mode') + chalk.dim(`  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.rgb(0, 255, 80).bold('K Help'))
   lines.push('')
   lines.push(
     chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') +
     chalk.dim('  •  ') +
     '⭐ ' +
-    '\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Star on GitHub\x1b]8;;\x1b\\' +
+    chalk.yellow('\x1b]8;;https://github.com/vava-nessa/free-coding-models\x1b\\Star on GitHub\x1b]8;;\x1b\\') +
     chalk.dim('  •  ') +
     '🤝 ' +
-    '\x1b]8;;https://github.com/vava-nessa/free-coding-models/graphs/contributors\x1b\\Contributors\x1b]8;;\x1b\\'
+    chalk.rgb(255, 165, 0)('\x1b]8;;https://github.com/vava-nessa/free-coding-models/graphs/contributors\x1b\\Contributors\x1b]8;;\x1b\\') +
+    chalk.dim('  •  ') +
+    '💬 ' +
+    chalk.rgb(200, 150, 255)('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Discord\x1b]8;;\x1b\\') +
+    chalk.dim(' → ') +
+    chalk.rgb(200, 150, 255)('https://discord.gg/5MbTnDC3Md') +
+    chalk.dim('  •  ') +
+    chalk.dim('Ctrl+C Exit')
   )
-  // 📖 Discord invite + BETA warning — always visible at the bottom of the TUI
-  lines.push('  💬 ' + chalk.cyanBright('\x1b]8;;https://discord.gg/5MbTnDC3Md\x1b\\Join our Discord\x1b]8;;\x1b\\') + chalk.dim(' → ') + chalk.cyanBright('https://discord.gg/5MbTnDC3Md') + chalk.dim('  •  ') + chalk.yellow('⚠ BETA TUI') + chalk.dim(' — might crash or have problems'))
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
@@ -1139,7 +1297,19 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
 // 📖 providerKey and url determine provider-specific request format.
 // 📖 apiKey can be null — in that case no Authorization header is sent.
 // 📖 A 401 response still tells us the server is UP and gives us real latency.
+function resolveCloudflareUrl(url) {
+  // 📖 Cloudflare's OpenAI-compatible endpoint is account-scoped.
+  // 📖 We resolve {account_id} from env so provider setup can stay simple in config.
+  const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  if (!url.includes('{account_id}')) return url
+  if (!accountId) return url.replace('{account_id}', 'missing-account-id')
+  return url.replace('{account_id}', encodeURIComponent(accountId))
+}
+
 function buildPingRequest(apiKey, modelId, providerKey, url) {
+  // 📖 ZAI models are stored as "zai/glm-..." in sources.js but the API expects just "glm-..."
+  const apiModelId = providerKey === 'zai' ? modelId.replace(/^zai\//, '') : modelId
+
   if (providerKey === 'replicate') {
     // 📖 Replicate uses /v1/predictions with a different payload than OpenAI chat-completions.
     const replicateHeaders = { 'Content-Type': 'application/json', Prefer: 'wait=4' }
@@ -1151,8 +1321,16 @@ function buildPingRequest(apiKey, modelId, providerKey, url) {
     }
   }
 
-  // 📖 ZAI API expects model IDs without the "zai/" prefix (e.g. "glm-5" not "zai/glm-5")
-  const apiModelId = providerKey === 'zai' ? modelId.replace(/^zai\//, '') : modelId
+  if (providerKey === 'cloudflare') {
+    // 📖 Cloudflare Workers AI uses OpenAI-compatible payload but needs account_id in URL.
+    const headers = { 'Content-Type': 'application/json' }
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+    return {
+      url: resolveCloudflareUrl(url),
+      headers,
+      body: { model: apiModelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 },
+    }
+  }
 
   const headers = { 'Content-Type': 'application/json' }
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`
@@ -1213,10 +1391,9 @@ const OPENCODE_MODEL_MAP = {
 }
 
 function getOpenCodeModelId(providerKey, modelId) {
-  if (OPENCODE_MODEL_MAP[providerKey]?.[modelId]) return OPENCODE_MODEL_MAP[providerKey][modelId]
-  // 📖 ZAI model IDs are prefixed with "zai/" in sources.js — strip it for OpenCode refs
+  // 📖 ZAI models stored as "zai/glm-..." but OpenCode expects just "glm-..."
   if (providerKey === 'zai') return modelId.replace(/^zai\//, '')
-  return modelId
+  return OPENCODE_MODEL_MAP[providerKey]?.[modelId] || modelId
 }
 
 // 📖 Env var names per provider -- used for passing resolved keys to child processes
@@ -1234,6 +1411,10 @@ const ENV_VAR_NAMES = {
   hyperbolic: 'HYPERBOLIC_API_KEY',
   scaleway:   'SCALEWAY_API_KEY',
   googleai:   'GOOGLE_API_KEY',
+  siliconflow:'SILICONFLOW_API_KEY',
+  together:   'TOGETHER_API_KEY',
+  cloudflare: 'CLOUDFLARE_API_TOKEN',
+  perplexity: 'PERPLEXITY_API_KEY',
   zai:        'ZAI_API_KEY',
 }
 
@@ -1331,11 +1512,39 @@ const PROVIDER_METADATA = {
     signupHint: 'Get API key',
     rateLimits: '14.4K req/day, 30/min',
   },
+  siliconflow: {
+    label: 'SiliconFlow',
+    color: chalk.rgb(255, 120, 30),
+    signupUrl: 'https://cloud.siliconflow.cn/account/ak',
+    signupHint: 'API Keys → Create',
+    rateLimits: 'Free models: usually 100 RPM, varies by model',
+  },
+  together: {
+    label: 'Together AI',
+    color: chalk.rgb(0, 180, 255),
+    signupUrl: 'https://api.together.ai/settings/api-keys',
+    signupHint: 'Settings → API keys',
+    rateLimits: 'Credits/promos vary by account (check console)',
+  },
+  cloudflare: {
+    label: 'Cloudflare Workers AI',
+    color: chalk.rgb(242, 119, 36),
+    signupUrl: 'https://dash.cloudflare.com',
+    signupHint: 'Create AI API token + set CLOUDFLARE_ACCOUNT_ID',
+    rateLimits: 'Free: 10k neurons/day, text-gen 300 RPM',
+  },
+  perplexity: {
+    label: 'Perplexity API',
+    color: chalk.rgb(0, 210, 190),
+    signupUrl: 'https://www.perplexity.ai/settings/api',
+    signupHint: 'Generate API key (billing may be required)',
+    rateLimits: 'Tiered limits by spend (default ~50 RPM)',
+  },
   zai: {
-    label: 'ZAI',
+    label: 'ZAI (z.ai)',
     color: chalk.rgb(0, 150, 255),
-    signupUrl: 'https://open.z.ai',
-    signupHint: 'Get free API key',
+    signupUrl: 'https://z.ai',
+    signupHint: 'Sign up and generate an API key',
     rateLimits: 'Free tier (generous quota)',
   },
 }
@@ -1703,6 +1912,53 @@ After installation, you can use: opencode --model ${modelRef}`
           options: {
             baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
             apiKey: '{env:GOOGLE_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'siliconflow') {
+        config.provider.siliconflow = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'SiliconFlow',
+          options: {
+            baseURL: 'https://api.siliconflow.com/v1',
+            apiKey: '{env:SILICONFLOW_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'together') {
+        config.provider.together = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Together AI',
+          options: {
+            baseURL: 'https://api.together.xyz/v1',
+            apiKey: '{env:TOGETHER_API_KEY}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'cloudflare') {
+        const cloudflareAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+        if (!cloudflareAccountId) {
+          console.log(chalk.yellow('  ⚠ Cloudflare Workers AI requires CLOUDFLARE_ACCOUNT_ID for OpenCode integration.'))
+          console.log(chalk.dim('    Export CLOUDFLARE_ACCOUNT_ID and retry this selection.'))
+          console.log()
+          return
+        }
+        config.provider.cloudflare = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Cloudflare Workers AI',
+          options: {
+            baseURL: `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}/ai/v1`,
+            apiKey: '{env:CLOUDFLARE_API_TOKEN}'
+          },
+          models: {}
+        }
+      } else if (providerKey === 'perplexity') {
+        config.provider.perplexity = {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'Perplexity API',
+          options: {
+            baseURL: 'https://api.perplexity.ai',
+            apiKey: '{env:PERPLEXITY_API_KEY}'
           },
           models: {}
         }
@@ -2336,7 +2592,9 @@ async function main() {
       st.scrollOffset = st.cursor - modelSlots + 1
     }
     // Final clamp
-    const maxOffset = Math.max(0, total - maxSlots)
+    // 📖 Keep one extra scroll step when top indicator is visible,
+    // 📖 otherwise the last rows become unreachable at the bottom.
+    const maxOffset = Math.max(0, total - maxSlots + 1)
     if (st.scrollOffset > maxOffset) st.scrollOffset = maxOffset
     if (st.scrollOffset < 0) st.scrollOffset = 0
   }
@@ -2371,6 +2629,8 @@ async function main() {
     config,                       // 📖 Live reference to the config object (updated on save)
     visibleSorted: [],            // 📖 Cached visible+sorted models — shared between render loop and key handlers
     helpVisible: false,           // 📖 Whether the help overlay (K key) is active
+    settingsScrollOffset: 0,      // 📖 Vertical scroll offset for Settings overlay viewport
+    helpScrollOffset: 0,          // 📖 Vertical scroll offset for Help overlay viewport
   }
 
   // 📖 Re-clamp viewport on terminal resize
@@ -2429,6 +2689,7 @@ async function main() {
     const updateRowIdx = providerKeys.length + 1
     const EL = '\x1b[K'
     const lines = []
+    const cursorLineByRow = {}
 
     lines.push('')
     lines.push(`  ${chalk.bold('⚙  Settings')}  ${chalk.dim('— free-coding-models v' + LOCAL_VERSION)}`)
@@ -2471,6 +2732,7 @@ async function main() {
       const bullet = isCursor ? chalk.bold.cyan('  ❯ ') : chalk.dim('    ')
 
       const row = `${bullet}[ ${enabledBadge} ] ${providerName}  ${keyDisplay.padEnd(30)}  ${testBadge}  ${rateSummary}`
+      cursorLineByRow[i] = lines.length
       lines.push(isCursor ? chalk.bgRgb(30, 30, 60)(row) : row)
     }
 
@@ -2485,6 +2747,11 @@ async function main() {
       lines.push(chalk.dim(`  1) Create a ${selectedMeta.label || selectedSource.name} account: ${selectedMeta.signupUrl || 'signup link missing'}`))
       lines.push(chalk.dim(`  2) ${selectedMeta.signupHint || 'Generate an API key and paste it with Enter on this row'}`))
       lines.push(chalk.dim(`  3) Press ${chalk.yellow('T')} to test your key. Status: ${setupStatus}`))
+      if (selectedProviderKey === 'cloudflare') {
+        const hasAccountId = Boolean((process.env.CLOUDFLARE_ACCOUNT_ID || '').trim())
+        const accountIdStatus = hasAccountId ? chalk.green('CLOUDFLARE_ACCOUNT_ID detected ✅') : chalk.yellow('Set CLOUDFLARE_ACCOUNT_ID ⚠')
+        lines.push(chalk.dim(`  4) Export ${chalk.yellow('CLOUDFLARE_ACCOUNT_ID')} in your shell. Status: ${accountIdStatus}`))
+      }
       lines.push('')
     }
 
@@ -2501,6 +2768,7 @@ async function main() {
       ? chalk.dim('[Config]')
       : chalk.yellow('[Env override]')
     const telemetryRow = `${telemetryRowBullet}${chalk.bold('Anonymous usage analytics').padEnd(44)} ${telemetryStatus}  ${telemetrySource}`
+    cursorLineByRow[telemetryRowIdx] = lines.length
     lines.push(telemetryCursor ? chalk.bgRgb(30, 30, 60)(telemetryRow) : telemetryRow)
 
     lines.push('')
@@ -2522,6 +2790,7 @@ async function main() {
     if (updateState === 'error') updateStatus = chalk.red('Check failed (press U to retry)')
     if (updateState === 'installing') updateStatus = chalk.cyan('Installing update…')
     const updateRow = `${updateBullet}${chalk.bold(updateActionLabel).padEnd(44)} ${updateStatus}`
+    cursorLineByRow[updateRowIdx] = lines.length
     lines.push(updateCursor ? chalk.bgRgb(30, 30, 60)(updateRow) : updateRow)
     if (updateState === 'error' && state.settingsUpdateError) {
       lines.push(chalk.red(`      ${state.settingsUpdateError}`))
@@ -2535,9 +2804,19 @@ async function main() {
     }
     lines.push('')
 
-    const cleared = lines.map(l => l + EL)
-    const remaining = state.terminalRows > 0 ? Math.max(0, state.terminalRows - cleared.length) : 0
-    for (let i = 0; i < remaining; i++) cleared.push(EL)
+    // 📖 Keep selected Settings row visible on small terminals by scrolling the overlay viewport.
+    const targetLine = cursorLineByRow[state.settingsCursor] ?? 0
+    state.settingsScrollOffset = keepOverlayTargetVisible(
+      state.settingsScrollOffset,
+      targetLine,
+      lines.length,
+      state.terminalRows
+    )
+    const { visible, offset } = sliceOverlayLines(lines, state.settingsScrollOffset, state.terminalRows)
+    state.settingsScrollOffset = offset
+
+    const tintedLines = tintOverlayLines(visible, SETTINGS_OVERLAY_BG)
+    const cleared = tintedLines.map(l => l + EL)
     return cleared.join('\n')
   }
 
@@ -2548,17 +2827,51 @@ async function main() {
     const EL = '\x1b[K'
     const lines = []
     lines.push('')
-    lines.push(`  ${chalk.bold('❓ Keyboard Shortcuts')}  ${chalk.dim('— press K or Esc to close')}`)
+    lines.push(`  ${chalk.bold('❓ Keyboard Shortcuts')}  ${chalk.dim('— ↑↓ / PgUp / PgDn / Home / End scroll • K or Esc close')}`)
+    lines.push('')
+    lines.push(`  ${chalk.bold('Columns')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Rank')}        SWE-bench rank (1 = best coding score)  ${chalk.dim('Sort:')} ${chalk.yellow('R')}`)
+    lines.push(`              ${chalk.dim('Quick glance at which model is objectively the best coder right now.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Tier')}        S+ / S / A+ / A / A- / B+ / B / C based on SWE-bench score  ${chalk.dim('Sort:')} ${chalk.yellow('Y')}`)
+    lines.push(`              ${chalk.dim('Skip the noise — S/S+ models solve real GitHub issues, C models are for light tasks.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('SWE%')}        SWE-bench score — coding ability benchmark (color-coded)  ${chalk.dim('Sort:')} ${chalk.yellow('S')}`)
+    lines.push(`              ${chalk.dim('The raw number behind the tier. Higher = better at writing, fixing, and refactoring code.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('CTX')}         Context window size (128k, 200k, 256k, 1m, etc.)  ${chalk.dim('Sort:')} ${chalk.yellow('C')}`)
+    lines.push(`              ${chalk.dim('Bigger context = the model can read more of your codebase at once without forgetting.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Model')}       Model name (⭐ = favorited, pinned at top)  ${chalk.dim('Sort:')} ${chalk.yellow('M')}  ${chalk.dim('Favorite:')} ${chalk.yellow('F')}`)
+    lines.push(`              ${chalk.dim('Star the ones you like — they stay pinned at the top across restarts.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Origin')}      Provider source (NIM, Groq, Cerebras, etc.)  ${chalk.dim('Sort:')} ${chalk.yellow('O')}  ${chalk.dim('Filter:')} ${chalk.yellow('N')}`)
+    lines.push(`              ${chalk.dim('Same model on different providers can have very different speed and uptime.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Latest')}      Most recent ping response time (ms)  ${chalk.dim('Sort:')} ${chalk.yellow('L')}`)
+    lines.push(`              ${chalk.dim('Shows how fast the server is responding right now — useful to catch live slowdowns.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Avg Ping')}    Average response time across all successful pings (ms)  ${chalk.dim('Sort:')} ${chalk.yellow('A')}`)
+    lines.push(`              ${chalk.dim('The long-term truth. Ignore lucky one-off pings, this tells you real everyday speed.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Health')}      Live status: ✅ UP / 🔥 429 / ⏳ TIMEOUT / ❌ ERR / 🔑 NO KEY  ${chalk.dim('Sort:')} ${chalk.yellow('H')}`)
+    lines.push(`              ${chalk.dim('Tells you instantly if a model is reachable or down — no guesswork needed.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Verdict')}     Overall assessment: Perfect / Normal / Spiky / Slow / Overloaded  ${chalk.dim('Sort:')} ${chalk.yellow('V')}`)
+    lines.push(`              ${chalk.dim('One-word summary so you don\'t have to cross-check speed, health, and stability yourself.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Stability')}   Composite 0–100 score: p95 + jitter + spike rate + uptime  ${chalk.dim('Sort:')} ${chalk.yellow('B')}`)
+    lines.push(`              ${chalk.dim('A fast model that randomly freezes is worse than a steady one. This catches that.')}`)
+    lines.push('')
+    lines.push(`  ${chalk.cyan('Up%')}         Uptime — ratio of successful pings to total pings  ${chalk.dim('Sort:')} ${chalk.yellow('U')}`)
+    lines.push(`              ${chalk.dim('If a model only works half the time, you\'ll waste time retrying. Higher = more reliable.')}`)
+
     lines.push('')
     lines.push(`  ${chalk.bold('Main TUI')}`)
     lines.push(`  ${chalk.bold('Navigation')}`)
     lines.push(`  ${chalk.yellow('↑↓')}           Navigate rows`)
     lines.push(`  ${chalk.yellow('Enter')}        Select model and launch`)
-    lines.push('')
-    lines.push(`  ${chalk.bold('Sorting')}`)
-    lines.push(`  ${chalk.yellow('R')} Rank  ${chalk.yellow('Y')} Tier  ${chalk.yellow('O')} Origin  ${chalk.yellow('M')} Model`)
-    lines.push(`  ${chalk.yellow('L')} Latest ping  ${chalk.yellow('A')} Avg ping  ${chalk.yellow('S')} SWE-bench score`)
-    lines.push(`  ${chalk.yellow('C')} Context window  ${chalk.yellow('H')} Health  ${chalk.yellow('V')} Verdict  ${chalk.yellow('U')} Uptime`)
     lines.push('')
     lines.push(`  ${chalk.bold('Filters')}`)
     lines.push(`  ${chalk.yellow('T')}  Cycle tier filter  ${chalk.dim('(All → S+ → S → A+ → A → A- → B+ → B → C → All)')}`)
@@ -2575,6 +2888,8 @@ async function main() {
     lines.push('')
     lines.push(`  ${chalk.bold('Settings (P)')}`)
     lines.push(`  ${chalk.yellow('↑↓')}           Navigate rows`)
+    lines.push(`  ${chalk.yellow('PgUp/PgDn')}    Jump by page`)
+    lines.push(`  ${chalk.yellow('Home/End')}     Jump first/last row`)
     lines.push(`  ${chalk.yellow('Enter')}        Edit key / toggle analytics / check-install update`)
     lines.push(`  ${chalk.yellow('Space')}        Toggle provider enable/disable`)
     lines.push(`  ${chalk.yellow('T')}            Test selected provider key`)
@@ -2592,9 +2907,11 @@ async function main() {
     lines.push(`  ${chalk.cyan('free-coding-models --no-telemetry')}       ${chalk.dim('Disable telemetry for this run')}`)
     lines.push(`  ${chalk.dim('Flags can be combined: --openclaw --tier S')}`)
     lines.push('')
-    const cleared = lines.map(l => l + EL)
-    const remaining = state.terminalRows > 0 ? Math.max(0, state.terminalRows - cleared.length) : 0
-    for (let i = 0; i < remaining; i++) cleared.push(EL)
+    // 📖 Help overlay can be longer than viewport, so keep a dedicated scroll offset.
+    const { visible, offset } = sliceOverlayLines(lines, state.helpScrollOffset, state.terminalRows)
+    state.helpScrollOffset = offset
+    const tintedLines = tintOverlayLines(visible, HELP_OVERLAY_BG)
+    const cleared = tintedLines.map(l => l + EL)
     return cleared.join('\n')
   }
 
@@ -2669,9 +2986,20 @@ async function main() {
   const onKeyPress = async (str, key) => {
     if (!key) return
 
-    // 📖 Help overlay: Esc or K closes it — handle before everything else so Esc isn't swallowed elsewhere
-    if (state.helpVisible && (key.name === 'escape' || key.name === 'k')) {
-      state.helpVisible = false
+    // 📖 Help overlay: full keyboard navigation + key swallowing while overlay is open.
+    if (state.helpVisible) {
+      const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
+      if (key.name === 'escape' || key.name === 'k') {
+        state.helpVisible = false
+        return
+      }
+      if (key.name === 'up') { state.helpScrollOffset = Math.max(0, state.helpScrollOffset - 1); return }
+      if (key.name === 'down') { state.helpScrollOffset += 1; return }
+      if (key.name === 'pageup') { state.helpScrollOffset = Math.max(0, state.helpScrollOffset - pageStep); return }
+      if (key.name === 'pagedown') { state.helpScrollOffset += pageStep; return }
+      if (key.name === 'home') { state.helpScrollOffset = 0; return }
+      if (key.name === 'end') { state.helpScrollOffset = Number.MAX_SAFE_INTEGER; return }
+      if (key.ctrl && key.name === 'c') { exit(0); return }
       return
     }
 
@@ -2751,6 +3079,28 @@ async function main() {
         return
       }
 
+      if (key.name === 'pageup') {
+        const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
+        state.settingsCursor = Math.max(0, state.settingsCursor - pageStep)
+        return
+      }
+
+      if (key.name === 'pagedown') {
+        const pageStep = Math.max(1, (state.terminalRows || 1) - 2)
+        state.settingsCursor = Math.min(updateRowIdx, state.settingsCursor + pageStep)
+        return
+      }
+
+      if (key.name === 'home') {
+        state.settingsCursor = 0
+        return
+      }
+
+      if (key.name === 'end') {
+        state.settingsCursor = updateRowIdx
+        return
+      }
+
       if (key.name === 'return') {
         if (state.settingsCursor === telemetryRowIdx) {
           ensureTelemetryConfig(state.config)
@@ -2818,15 +3168,16 @@ async function main() {
       state.settingsCursor = 0
       state.settingsEditMode = false
       state.settingsEditBuffer = ''
+      state.settingsScrollOffset = 0
       return
     }
 
-    // 📖 Sorting keys: R=rank, Y=tier, O=origin, M=model, L=latest ping, A=avg ping, S=SWE-bench, C=context, H=health, V=verdict, U=uptime
+    // 📖 Sorting keys: R=rank, Y=tier, O=origin, M=model, L=latest ping, A=avg ping, S=SWE-bench, C=context, H=health, V=verdict, B=stability, U=uptime
     // 📖 T is reserved for tier filter cycling — tier sort moved to Y
     // 📖 N is now reserved for origin filter cycling
     const sortKeys = {
       'r': 'rank', 'y': 'tier', 'o': 'origin', 'm': 'model',
-      'l': 'ping', 'a': 'avg', 's': 'swe', 'c': 'ctx', 'h': 'condition', 'v': 'verdict', 'u': 'uptime'
+      'l': 'ping', 'a': 'avg', 's': 'swe', 'c': 'ctx', 'h': 'condition', 'v': 'verdict', 'b': 'stability', 'u': 'uptime'
     }
 
     if (sortKeys[key.name] && !key.ctrl) {
@@ -2850,12 +3201,21 @@ async function main() {
     if (key.name === 'f') {
       const selected = state.visibleSorted[state.cursor]
       if (!selected) return
+      const wasFavorite = selected.isFavorite
       toggleFavoriteModel(state.config, selected.providerKey, selected.modelId)
       syncFavoriteFlags(state.results, state.config)
       applyTierFilter()
-      const selectedKey = toFavoriteKey(selected.providerKey, selected.modelId)
       const visible = state.results.filter(r => !r.hidden)
       state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
+
+      // 📖 UX rule: when unpinning a favorite, jump back to the top of the list.
+      if (wasFavorite) {
+        state.cursor = 0
+        state.scrollOffset = 0
+        return
+      }
+
+      const selectedKey = toFavoriteKey(selected.providerKey, selected.modelId)
       const newCursor = state.visibleSorted.findIndex(r => toFavoriteKey(r.providerKey, r.modelId) === selectedKey)
       if (newCursor >= 0) state.cursor = newCursor
       else if (state.cursor >= state.visibleSorted.length) state.cursor = Math.max(0, state.visibleSorted.length - 1)
@@ -2898,6 +3258,7 @@ async function main() {
     // 📖 Help overlay key: K = toggle help overlay
     if (key.name === 'k') {
       state.helpVisible = !state.helpVisible
+      if (state.helpVisible) state.helpScrollOffset = 0
       return
     }
 
@@ -2916,18 +3277,20 @@ async function main() {
     }
 
     if (key.name === 'up') {
-      if (state.cursor > 0) {
-        state.cursor--
-        adjustScrollOffset(state)
-      }
+      // 📖 Main list wrap navigation: top -> bottom on Up.
+      const count = state.visibleSorted.length
+      if (count === 0) return
+      state.cursor = state.cursor > 0 ? state.cursor - 1 : count - 1
+      adjustScrollOffset(state)
       return
     }
 
     if (key.name === 'down') {
-      if (state.cursor < state.visibleSorted.length - 1) {
-        state.cursor++
-        adjustScrollOffset(state)
-      }
+      // 📖 Main list wrap navigation: bottom -> top on Down.
+      const count = state.visibleSorted.length
+      if (count === 0) return
+      state.cursor = state.cursor < count - 1 ? state.cursor + 1 : 0
+      adjustScrollOffset(state)
       return
     }
 
