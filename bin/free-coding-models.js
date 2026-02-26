@@ -1309,9 +1309,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('  •  ') +
     chalk.dim('Ctrl+C Exit')
   )
-  lines.push('') // Empty line for terminal spacing
-  lines.push(chalk.dim('  (vava-nessa • erwinh22 • whit3rabbit • skylaweber)'))
-  lines.push('')
+
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
   // 📖 frames are cleared. Then pad with blank cleared lines to fill the terminal,
   // 📖 preventing stale content from lingering at the bottom after resize.
@@ -3306,7 +3304,9 @@ async function main() {
           state.recommendAnswers.priority,
           state.recommendAnswers.contextBudget,
           3
-        )
+  )
+  lines.push('____________________')
+
         state.recommendResults = recs
         state.recommendPhase = 'results'
         state.recommendCursor = 0
