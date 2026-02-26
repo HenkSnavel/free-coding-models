@@ -782,6 +782,8 @@ This script:
 | `--tier A` | Show only A+, A, A- tier models |
 | `--tier B` | Show only B+, B tier models |
 | `--tier C` | Show only C tier models |
+| `--profile <name>` | Load a saved config profile on startup |
+| `--recommend` | Auto-open Smart Recommend overlay on start |
 
 **Keyboard shortcuts (main TUI):**
 - **↑↓** — Navigate models
@@ -790,7 +792,12 @@ This script:
 - **F** — Toggle favorite on selected model (⭐ in Model column, pinned at top)
 - **T** — Cycle tier filter (All → S+ → S → A+ → A → A- → B+ → B → C → All)
 - **Z** — Cycle mode (OpenCode CLI → OpenCode Desktop → OpenClaw)
-- **P** — Open Settings (manage API keys, provider toggles, analytics toggle, manual update)
+- **P** — Open Settings (manage API keys, provider toggles, analytics toggle, manual update, profiles)
+- **Shift+P** — Cycle through saved profiles (switches live TUI settings)
+- **Shift+S** — Save current TUI settings as a named profile (inline prompt)
+- **Q** — Open Smart Recommend overlay (find the best model for your task)
+- **E** — Elevate tier filter (show higher tiers)
+- **D** — Descend tier filter (show lower tiers)
 - **W** — Decrease ping interval (faster pings)
 - **X** — Increase ping interval (slower pings)
 - **K** / **Esc** — Show/hide help overlay
@@ -799,12 +806,43 @@ This script:
 Pressing **K** now shows a full in-app reference: main hotkeys, settings hotkeys, and CLI flags with usage examples.
 
 **Keyboard shortcuts (Settings screen — `P` key):**
-- **↑↓** — Navigate providers, analytics row, and maintenance row
-- **Enter** — Edit API key inline, toggle analytics on analytics row, or check/install update on maintenance row
-- **Space** — Toggle provider enabled/disabled, or toggle analytics on analytics row
+- **↑↓** — Navigate providers, analytics row, maintenance row, and profile rows
+- **Enter** — Edit API key inline, toggle analytics, check/install update, or load a profile
+- **Space** — Toggle provider enabled/disabled, or toggle analytics
 - **T** — Test current provider's API key (fires a live ping)
 - **U** — Check for updates manually from settings
+- **Backspace** — Delete the selected profile (only on profile rows)
 - **Esc** — Close settings and return to main TUI
+
+---
+
+### 📋 Config Profiles
+
+Profiles let you save and restore different TUI configurations — useful if you switch between work/personal setups, different tier preferences, or want to keep separate favorites lists.
+
+**What's stored in a profile:**
+- Favorites (starred models)
+- Sort column and direction
+- Tier filter
+- Ping interval
+- API keys
+
+**Saving a profile:**
+1. Configure the TUI the way you want (favorites, sort, tier, etc.)
+2. Press **Shift+S** — an inline prompt appears at the bottom
+3. Type a name (e.g. `work`, `fast-only`, `presentation`) and press **Enter**
+4. The profile is saved and becomes the active profile (shown as a purple badge in the header)
+
+**Switching profiles:**
+- **Shift+P** in the main table — cycles through saved profiles (or back to raw config)
+- **`--profile <name>`** — load a specific profile on startup
+
+**Managing profiles:**
+- Open Settings (**P** key) — scroll down to the **Profiles** section
+- **Enter** on a profile row to load it
+- **Backspace** on a profile row to delete it
+
+Profiles are stored inside `~/.free-coding-models.json` under the `profiles` key.
 
 ---
 

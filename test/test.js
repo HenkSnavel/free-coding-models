@@ -29,8 +29,13 @@ import { nvidiaNim, sources, MODELS } from '../sources.js'
 import {
   getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore,
   sortResults, filterByTier, findBestModel, parseArgs,
-  TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP
+  TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP,
+  scoreModelForTask, getTopRecommendations, TASK_TYPES, PRIORITY_TYPES, CONTEXT_BUDGETS
 } from '../lib/utils.js'
+import {
+  _emptyProfileSettings, saveAsProfile, loadProfile, listProfiles,
+  deleteProfile, getActiveProfileName, setActiveProfile
+} from '../lib/config.js'
 
 // ─── Helper: create a mock model result ──────────────────────────────────────
 // 📖 Builds a minimal result object matching the shape used by the main script
@@ -738,5 +743,323 @@ describe('constants consistency', () => {
         assert.ok(TIER_ORDER.includes(tier), `TIER_LETTER_MAP['${letter}'] has invalid tier "${tier}"`)
       }
     }
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📖 5. SMART RECOMMEND — SCORING ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Smart Recommend constants', () => {
+  it('TASK_TYPES has expected keys', () => {
+    assert.deepEqual(Object.keys(TASK_TYPES).sort(), ['quickfix', 'refactor', 'review', 'testgen'])
+  })
+
+  it('TASK_TYPES weights sum to 1.0 for each task', () => {
+    for (const [key, task] of Object.entries(TASK_TYPES)) {
+      const sum = task.sweWeight + task.speedWeight + task.ctxWeight + task.stabilityWeight
+      assert.ok(Math.abs(sum - 1.0) < 0.001, `${key} weights sum to ${sum}, expected 1.0`)
+    }
+  })
+
+  it('PRIORITY_TYPES has expected keys', () => {
+    assert.deepEqual(Object.keys(PRIORITY_TYPES).sort(), ['balanced', 'quality', 'speed'])
+  })
+
+  it('PRIORITY_TYPES balanced has 1.0 multipliers', () => {
+    assert.equal(PRIORITY_TYPES.balanced.speedMultiplier, 1.0)
+    assert.equal(PRIORITY_TYPES.balanced.sweMultiplier, 1.0)
+  })
+
+  it('CONTEXT_BUDGETS has expected keys', () => {
+    assert.deepEqual(Object.keys(CONTEXT_BUDGETS).sort(), ['large', 'medium', 'small'])
+  })
+
+  it('CONTEXT_BUDGETS have ascending idealCtx', () => {
+    assert.ok(CONTEXT_BUDGETS.small.idealCtx < CONTEXT_BUDGETS.medium.idealCtx)
+    assert.ok(CONTEXT_BUDGETS.medium.idealCtx < CONTEXT_BUDGETS.large.idealCtx)
+  })
+})
+
+describe('scoreModelForTask', () => {
+  it('returns 0 for invalid task type', () => {
+    assert.equal(scoreModelForTask(mockResult(), 'invalid', 'balanced', 'small'), 0)
+  })
+
+  it('returns 0 for invalid priority', () => {
+    assert.equal(scoreModelForTask(mockResult(), 'quickfix', 'invalid', 'small'), 0)
+  })
+
+  it('returns 0 for invalid context budget', () => {
+    assert.equal(scoreModelForTask(mockResult(), 'quickfix', 'balanced', 'invalid'), 0)
+  })
+
+  it('returns a score between 0 and 100', () => {
+    const r = mockResult({ pings: [{ ms: 200, code: '200' }, { ms: 300, code: '200' }] })
+    const score = scoreModelForTask(r, 'quickfix', 'balanced', 'small')
+    assert.ok(score >= 0 && score <= 100, `score ${score} should be 0-100`)
+  })
+
+  it('penalizes down models', () => {
+    const up = mockResult({ status: 'up', pings: [{ ms: 200, code: '200' }], sweScore: '50.0%', ctx: '128k' })
+    const down = mockResult({ status: 'down', pings: [{ ms: 200, code: '200' }], sweScore: '50.0%', ctx: '128k' })
+    const scoreUp = scoreModelForTask(up, 'quickfix', 'balanced', 'small')
+    const scoreDown = scoreModelForTask(down, 'quickfix', 'balanced', 'small')
+    assert.ok(scoreUp > scoreDown, `up (${scoreUp}) should beat down (${scoreDown})`)
+  })
+
+  it('penalizes timeout models', () => {
+    const up = mockResult({ status: 'up', pings: [{ ms: 200, code: '200' }], sweScore: '50.0%', ctx: '128k' })
+    const timeout = mockResult({ status: 'timeout', pings: [{ ms: 200, code: '200' }], sweScore: '50.0%', ctx: '128k' })
+    const scoreUp = scoreModelForTask(up, 'quickfix', 'balanced', 'small')
+    const scoreTimeout = scoreModelForTask(timeout, 'quickfix', 'balanced', 'small')
+    assert.ok(scoreUp > scoreTimeout, `up (${scoreUp}) should beat timeout (${scoreTimeout})`)
+  })
+
+  it('higher SWE score gives higher score for quality-focused tasks', () => {
+    const highSwe = mockResult({ sweScore: '70.0%', pings: [{ ms: 300, code: '200' }], ctx: '128k' })
+    const lowSwe = mockResult({ sweScore: '20.0%', pings: [{ ms: 300, code: '200' }], ctx: '128k' })
+    const scoreHigh = scoreModelForTask(highSwe, 'refactor', 'quality', 'medium')
+    const scoreLow = scoreModelForTask(lowSwe, 'refactor', 'quality', 'medium')
+    assert.ok(scoreHigh > scoreLow, `high SWE (${scoreHigh}) should beat low SWE (${scoreLow})`)
+  })
+
+  it('faster model scores better for speed-focused quickfix', () => {
+    const fast = mockResult({ pings: [{ ms: 100, code: '200' }], sweScore: '40.0%', ctx: '128k' })
+    const slow = mockResult({ pings: [{ ms: 4000, code: '200' }], sweScore: '40.0%', ctx: '128k' })
+    const scoreFast = scoreModelForTask(fast, 'quickfix', 'speed', 'small')
+    const scoreSlow = scoreModelForTask(slow, 'quickfix', 'speed', 'small')
+    assert.ok(scoreFast > scoreSlow, `fast (${scoreFast}) should beat slow (${scoreSlow})`)
+  })
+
+  it('larger context model scores better for large codebase budget', () => {
+    const bigCtx = mockResult({ ctx: '256k', pings: [{ ms: 300, code: '200' }], sweScore: '40.0%' })
+    const smallCtx = mockResult({ ctx: '4k', pings: [{ ms: 300, code: '200' }], sweScore: '40.0%' })
+    const scoreBig = scoreModelForTask(bigCtx, 'review', 'balanced', 'large')
+    const scoreSmall = scoreModelForTask(smallCtx, 'review', 'balanced', 'large')
+    assert.ok(scoreBig > scoreSmall, `big ctx (${scoreBig}) should beat small ctx (${scoreSmall})`)
+  })
+
+  it('handles missing SWE score (dash)', () => {
+    const r = mockResult({ sweScore: '—', pings: [{ ms: 200, code: '200' }] })
+    const score = scoreModelForTask(r, 'quickfix', 'balanced', 'small')
+    assert.ok(score >= 0, `score with no SWE should be >= 0`)
+  })
+
+  it('handles missing context (dash)', () => {
+    const r = mockResult({ ctx: '—', pings: [{ ms: 200, code: '200' }], sweScore: '40.0%' })
+    const score = scoreModelForTask(r, 'quickfix', 'balanced', 'small')
+    assert.ok(score >= 0, `score with no ctx should be >= 0`)
+  })
+
+  it('handles no pings (Infinity avg)', () => {
+    const r = mockResult({ pings: [], sweScore: '40.0%', ctx: '128k' })
+    const score = scoreModelForTask(r, 'quickfix', 'balanced', 'small')
+    assert.ok(score >= 0, `score with no pings should be >= 0`)
+  })
+
+  it('handles 1m context', () => {
+    const r = mockResult({ ctx: '1m', pings: [{ ms: 200, code: '200' }], sweScore: '40.0%' })
+    const score = scoreModelForTask(r, 'review', 'balanced', 'large')
+    assert.ok(score > 0, `1m context model should score > 0`)
+  })
+})
+
+describe('getTopRecommendations', () => {
+  it('returns topN results', () => {
+    const results = [
+      mockResult({ modelId: 'a', sweScore: '60.0%', pings: [{ ms: 100, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'b', sweScore: '40.0%', pings: [{ ms: 200, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'c', sweScore: '70.0%', pings: [{ ms: 150, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'd', sweScore: '30.0%', pings: [{ ms: 300, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'e', sweScore: '50.0%', pings: [{ ms: 250, code: '200' }], ctx: '128k' }),
+    ]
+    const recs = getTopRecommendations(results, 'quickfix', 'balanced', 'small', 3)
+    assert.equal(recs.length, 3)
+  })
+
+  it('returns results sorted by score descending', () => {
+    const results = [
+      mockResult({ modelId: 'a', sweScore: '60.0%', pings: [{ ms: 100, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'b', sweScore: '30.0%', pings: [{ ms: 500, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'c', sweScore: '70.0%', pings: [{ ms: 150, code: '200' }], ctx: '128k' }),
+    ]
+    const recs = getTopRecommendations(results, 'quickfix', 'balanced', 'small', 3)
+    assert.ok(recs[0].score >= recs[1].score, 'first should have highest score')
+    assert.ok(recs[1].score >= recs[2].score, 'second should beat third')
+  })
+
+  it('excludes hidden results', () => {
+    const results = [
+      mockResult({ modelId: 'a', sweScore: '60.0%', pings: [{ ms: 100, code: '200' }], ctx: '128k' }),
+      mockResult({ modelId: 'b', sweScore: '90.0%', pings: [{ ms: 50, code: '200' }], ctx: '256k', hidden: true }),
+      mockResult({ modelId: 'c', sweScore: '30.0%', pings: [{ ms: 200, code: '200' }], ctx: '128k' }),
+    ]
+    const recs = getTopRecommendations(results, 'quickfix', 'balanced', 'small', 3)
+    assert.equal(recs.length, 2, 'hidden model should be excluded')
+    const ids = recs.map(r => r.result.modelId)
+    assert.ok(!ids.includes('b'), 'hidden model b should not appear')
+  })
+
+  it('returns fewer than topN if not enough results', () => {
+    const results = [
+      mockResult({ modelId: 'a', sweScore: '60.0%', pings: [{ ms: 100, code: '200' }], ctx: '128k' }),
+    ]
+    const recs = getTopRecommendations(results, 'quickfix', 'balanced', 'small', 3)
+    assert.equal(recs.length, 1)
+  })
+
+  it('each result has result and score fields', () => {
+    const results = [
+      mockResult({ modelId: 'a', sweScore: '60.0%', pings: [{ ms: 100, code: '200' }], ctx: '128k' }),
+    ]
+    const recs = getTopRecommendations(results, 'quickfix', 'balanced', 'small')
+    assert.ok(recs[0].result, 'should have result field')
+    assert.equal(typeof recs[0].score, 'number', 'should have numeric score')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📖 6. PARSEARGS — --profile AND --recommend FLAGS
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('parseArgs --profile and --recommend', () => {
+  // 📖 Helper: simulate process.argv (first two entries are node + script path)
+  const argv = (...args) => ['node', 'script.js', ...args]
+
+  it('parses --profile with a value', () => {
+    const result = parseArgs(argv('--profile', 'work'))
+    assert.equal(result.profileName, 'work')
+  })
+
+  it('returns null profileName when --profile has no value', () => {
+    assert.equal(parseArgs(argv('--profile')).profileName, null)
+    assert.equal(parseArgs(argv('--profile', '--best')).profileName, null)
+  })
+
+  it('does not capture --profile value as apiKey', () => {
+    assert.equal(parseArgs(argv('--profile', 'work')).apiKey, null)
+  })
+
+  it('parses --recommend flag', () => {
+    assert.equal(parseArgs(argv('--recommend')).recommendMode, true)
+  })
+
+  it('recommendMode defaults to false', () => {
+    assert.equal(parseArgs(argv()).recommendMode, false)
+  })
+
+  it('handles --profile and --recommend together', () => {
+    const result = parseArgs(argv('--profile', 'fast', '--recommend', '--opencode'))
+    assert.equal(result.profileName, 'fast')
+    assert.equal(result.recommendMode, true)
+    assert.equal(result.openCodeMode, true)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📖 7. CONFIG PROFILES — pure logic tests (no filesystem I/O)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('config profile functions', () => {
+  // 📖 Helper: create a minimal config object matching the shape from loadConfig()
+  function mockConfig() {
+    return {
+      apiKeys: { nvidia: 'test-key' },
+      providers: { nvidia: true },
+      favorites: ['nvidia/test-model'],
+      telemetry: { enabled: false },
+      profiles: {},
+      activeProfile: null,
+    }
+  }
+
+  it('_emptyProfileSettings returns expected shape', () => {
+    const settings = _emptyProfileSettings()
+    assert.equal(typeof settings.tierFilter, 'object') // null
+    assert.equal(settings.sortColumn, 'avg')
+    assert.equal(settings.sortAsc, true)
+    assert.equal(settings.pingInterval, 8000)
+  })
+
+  it('listProfiles returns empty array for fresh config', () => {
+    const config = mockConfig()
+    assert.deepEqual(listProfiles(config), [])
+  })
+
+  it('saveAsProfile saves and listProfiles returns it', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'work', { sortColumn: 'swe', sortAsc: false, pingInterval: 5000 })
+    assert.deepEqual(listProfiles(config), ['work'])
+  })
+
+  it('saveAsProfile copies apiKeys and favorites into profile', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'myprofile')
+    const profile = config.profiles.myprofile
+    assert.deepEqual(profile.apiKeys, { nvidia: 'test-key' })
+    assert.deepEqual(profile.favorites, ['nvidia/test-model'])
+  })
+
+  it('loadProfile returns settings and sets activeProfile', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'dev', { sortColumn: 'rank', sortAsc: true, pingInterval: 3000 })
+    const settings = loadProfile(config, 'dev')
+    assert.equal(settings.sortColumn, 'rank')
+    assert.equal(config.activeProfile, 'dev')
+  })
+
+  it('loadProfile returns null for nonexistent profile', () => {
+    const config = mockConfig()
+    assert.equal(loadProfile(config, 'nope'), null)
+  })
+
+  it('loadProfile applies apiKeys from profile to config', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'p1')
+    // 📖 Mutate config apiKeys after saving profile
+    config.apiKeys.nvidia = 'changed-key'
+    loadProfile(config, 'p1')
+    assert.equal(config.apiKeys.nvidia, 'test-key', 'should restore original key from profile')
+  })
+
+  it('deleteProfile removes the profile', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'temp')
+    assert.deepEqual(listProfiles(config), ['temp'])
+    deleteProfile(config, 'temp')
+    assert.deepEqual(listProfiles(config), [])
+  })
+
+  it('deleteProfile clears activeProfile if it was the deleted one', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'active')
+    setActiveProfile(config, 'active')
+    assert.equal(getActiveProfileName(config), 'active')
+    deleteProfile(config, 'active')
+    assert.equal(getActiveProfileName(config), null)
+  })
+
+  it('getActiveProfileName returns null by default', () => {
+    const config = mockConfig()
+    assert.equal(getActiveProfileName(config), null)
+  })
+
+  it('setActiveProfile sets and getActiveProfileName reads it', () => {
+    const config = mockConfig()
+    setActiveProfile(config, 'fast')
+    assert.equal(getActiveProfileName(config), 'fast')
+  })
+
+  it('setActiveProfile(null) clears the active profile', () => {
+    const config = mockConfig()
+    setActiveProfile(config, 'fast')
+    setActiveProfile(config, null)
+    assert.equal(getActiveProfileName(config), null)
+  })
+
+  it('multiple profiles can coexist', () => {
+    const config = mockConfig()
+    saveAsProfile(config, 'work', { sortColumn: 'rank' })
+    saveAsProfile(config, 'personal', { sortColumn: 'avg' })
+    saveAsProfile(config, 'fast', { sortColumn: 'ping' })
+    assert.deepEqual(listProfiles(config), ['fast', 'personal', 'work'])
   })
 })

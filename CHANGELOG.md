@@ -2,6 +2,31 @@
 
 ---
 
+## 0.1.68
+
+### Added
+
+- **Smart Recommend (Q key)** — new modal overlay with a 3-question wizard (task type, priority, context budget) that runs a 10-second targeted analysis (2 pings/sec) and recommends the Top 3 models for your use case. Recommended models are pinned above favorites with 🎯 prefix and green row highlight.
+- **Config Profiles** — save/load named configuration profiles (`--profile work`, `--profile fast`, etc.). Each profile stores API keys, enabled providers, favorites, tier filters, ping interval, and default sort. **Shift+P** cycles through profiles live in the TUI.
+- **`--recommend` CLI flag** — auto-opens the Smart Recommend overlay on startup.
+- **`--profile <name>` CLI flag** — loads a saved profile at startup; errors if profile doesn't exist.
+- **Scoring engine** (`lib/utils.js`) — `TASK_TYPES`, `PRIORITY_TYPES`, `CONTEXT_BUDGETS`, `parseCtxToK()`, `parseSweToNum()`, `scoreModelForTask()`, `getTopRecommendations()` for the recommendation algorithm.
+- **Profile management** (`lib/config.js`) — `saveAsProfile()`, `loadProfile()`, `listProfiles()`, `deleteProfile()`, `getActiveProfileName()`, `setActiveProfile()`.
+- 43 new unit tests (131 total) covering scoring constants, `scoreModelForTask`, `getTopRecommendations`, `--profile`/`--recommend` arg parsing, and config profile CRUD.
+
+### Changed
+
+- **Help overlay (K)** — removed the Filters section; moved `T` (Cycle tier) and `N` (Cycle origin) shortcuts into their respective column description rows. Added `Q` (Smart Recommend) and `Shift+P` (Cycle profile) shortcuts. Added `--recommend` and `--profile` to the CLI flags section.
+- **Sort/pin order** — `sortResultsWithPinnedFavorites()` now pins recommended+favorite models first, then recommended-only, then favorite-only, then normal sorted models.
+- **Animation loop priority** — Settings > Recommend > Help > Table.
+
+### Fixed
+
+- **`--profile` arg parsing** — the profile value (e.g. `work` in `--profile work`) was incorrectly captured as `apiKey`; fixed with `skipIndices` Set in `parseArgs()`.
+- **`recommendScore` undefined** — `sortResultsWithPinnedFavorites()` referenced `recommendScore` but it was never set on result objects; now set during `startRecommendAnalysis()`.
+
+---
+
 ## 0.1.67
 
 ### Added
