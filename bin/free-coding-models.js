@@ -1551,15 +1551,9 @@ const PROVIDER_METADATA = {
   },
 }
 
-// 📖 OpenCode config location varies by platform
-// 📖 Windows: %APPDATA%\opencode\opencode.json (or sometimes ~/.config/opencode)
-// 📖 macOS/Linux: ~/.config/opencode/opencode.json
-const OPENCODE_CONFIG = isWindows 
-  ? join(homedir(), 'AppData', 'Roaming', 'opencode', 'opencode.json')
-  : join(homedir(), '.config', 'opencode', 'opencode.json')
-
-// 📖 Fallback to .config on Windows if AppData doesn't exist
-const OPENCODE_CONFIG_FALLBACK = join(homedir(), '.config', 'opencode', 'opencode.json')
+// 📖 OpenCode config location: ~/.config/opencode/opencode.json on ALL platforms.
+// 📖 OpenCode uses xdg-basedir which resolves to %USERPROFILE%\.config on Windows.
+const OPENCODE_CONFIG = join(homedir(), '.config', 'opencode', 'opencode.json')
 const OPENCODE_PORT_RANGE_START = 4096
 const OPENCODE_PORT_RANGE_END = 5096
 
@@ -1601,8 +1595,6 @@ async function resolveOpenCodeTmuxPort() {
 }
 
 function getOpenCodeConfigPath() {
-  if (existsSync(OPENCODE_CONFIG)) return OPENCODE_CONFIG
-  if (isWindows && existsSync(OPENCODE_CONFIG_FALLBACK)) return OPENCODE_CONFIG_FALLBACK
   return OPENCODE_CONFIG
 }
 

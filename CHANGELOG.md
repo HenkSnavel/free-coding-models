@@ -2,6 +2,27 @@
 
 ---
 
+## 0.1.68
+
+### Added
+
+- **[fork] ZAI reverse proxy for OpenCode** -- When selecting a ZAI model, a local HTTP proxy automatically starts to translate OpenCode's `/v1/*` requests to ZAI's `/api/coding/paas/v4/*` API format. Proxy lifecycle is fully managed (starts on Enter, stops on OpenCode exit).
+- **[fork] Stale config cleanup on OpenCode exit** -- The `spawnOpenCode` exit handler now removes the ZAI provider block from `opencode.json` so leftover config does not cause "model not valid" errors on the next manual OpenCode launch.
+
+### Fixed
+
+- **[fork] OpenCode config path on Windows** -- OpenCode uses `xdg-basedir` which resolves to `%USERPROFILE%\.config` on all platforms. We were writing to `%APPDATA%\Roaming\opencode\` on Windows, so OpenCode never saw the ZAI provider config. Config path is now `~/.config/opencode/opencode.json` on all platforms.
+- **[fork] `apiKey` field for ZAI provider** -- Changed from `{env:ZAI_API_KEY}` template string to the actual resolved key so OpenCode's `@ai-sdk/openai-compatible` provider can authenticate immediately.
+
+### Changed
+
+- **[fork] Default ping interval 3s -> 60s** -- Reduced re-ping frequency from every 3 seconds to every 60 seconds for a calmer monitoring experience (still adjustable with W/X keys).
+- **[fork] Suppress MaxListeners warning** -- Set `NODE_NO_WARNINGS=1` in the OpenCode child process environment to suppress Node.js EventEmitter warnings.
+- **[fork] ZAI models synced to 5** -- Updated `sources.js` to 5 ZAI API models with SWE-bench scores: GLM-5 (77.8%), GLM-4.5 (75.0%), GLM-4.7 (73.8%), GLM-4.5-Air (72.0%), GLM-4.6 (70.0%).
+- **[fork] README updates** -- Updated model/provider counts (139 models, 18 providers), ZAI model table with SWE-bench scores, ping interval references (60s), added ZAI proxy documentation.
+
+---
+
 ## 0.1.67
 
 ### Added

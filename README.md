@@ -24,7 +24,7 @@
 
 <p align="center">
   <strong>Find the fastest coding LLM models in seconds</strong><br>
-  <sub>Ping free coding models from 17 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
+  <sub>Ping free coding models from 18 providers in real-time — pick the best one for OpenCode, OpenClaw, or any AI coding assistant</sub>
 </p>
 
 <p align="center">
@@ -49,7 +49,7 @@
 ## ✨ Features
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
-- **🌐 Multi-provider** — 141 models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, Google AI, SiliconFlow, Together AI, Cloudflare Workers AI, Perplexity API, and ZAI
+- **🌐 Multi-provider** — Models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, Google AI, SiliconFlow, Together AI, Cloudflare Workers AI, Perplexity API, and ZAI
 - **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, test keys live, and manually check/install updates
 - **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
@@ -180,13 +180,13 @@ When you run `free-coding-models` without `--opencode` or `--openclaw`, you get 
 Use `↑↓` arrows to select, `Enter` to confirm. Then the TUI launches with your chosen mode shown in the header badge.
 
 **How it works:**
-1. **Ping phase** — All enabled models are pinged in parallel (up to 134 across 17 providers)
-2. **Continuous monitoring** — Models are re-pinged every 3 seconds forever
+1. **Ping phase** — All enabled models are pinged in parallel (up to 139 across 18 providers)
+2. **Continuous monitoring** — Models are re-pinged every 60 seconds forever
 3. **Real-time updates** — Watch "Latest", "Avg", and "Up%" columns update live
 4. **Select anytime** — Use ↑↓ arrows to navigate, press Enter on a model to act
 5. **Smart detection** — Automatically detects if NVIDIA NIM is configured in OpenCode or OpenClaw
 
-Setup wizard (first run — walks through all 17 providers):
+Setup wizard (first run — walks through all 18 providers):
 
 ```
   🔑 First-time setup — API keys
@@ -352,7 +352,7 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 1. Sign up at [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
 2. Create API key (`PERPLEXITY_API_KEY`)
 
-**ZAI Coding Plan** (7 models, GLM family):
+**ZAI** (5 models, GLM family):
 1. Sign up at [z.ai](https://z.ai)
 2. Subscribe to Coding Plan
 3. Get API key from dashboard
@@ -363,19 +363,13 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 
 ## 🤖 Coding Models
 
-**134 coding models** across 17 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**139 coding models** across 18 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
 
-### ZAI Coding Plan (7 models)
+### ZAI Coding Plan (5 models)
 
 | Tier | SWE-bench | Model |
 |------|-----------|-------|
-| — | — | GLM-5 |
-| — | — | GLM-4.7 |
-| — | — | GLM-4.7-Flash |
-| — | — | GLM-4.7-FlashX |
-| — | — | GLM-4.6 |
-| — | — | GLM-4.6V-FlashX |
-| — | — | GLM-OCR |
+| **S+** ≥70% | GLM-5 (77.8%), GLM-4.5 (75.0%), GLM-4.7 (73.8%), GLM-4.5-Air (72.0%), GLM-4.6 (70.0%) |
 
 ### NVIDIA NIM (44 models)
 
@@ -547,6 +541,18 @@ You can force a specific port:
 OPENCODE_PORT=4098 free-coding-models --opencode
 ```
 
+### ZAI provider proxy
+
+OpenCode doesn't natively support ZAI's API path format (`/api/coding/paas/v4/*`). When you select a ZAI model, `free-coding-models` automatically starts a local reverse proxy that translates OpenCode's standard `/v1/*` requests to ZAI's API. This is fully transparent -- just select a ZAI model and press Enter.
+
+**How it works:**
+1. A localhost HTTP proxy starts on a random available port
+2. OpenCode is configured with a `zai` provider pointing at `http://localhost:<port>/v1`
+3. The proxy rewrites `/v1/models` to `/api/coding/paas/v4/models` and `/v1/chat/completions` to `/api/coding/paas/v4/chat/completions`
+4. When OpenCode exits, the proxy shuts down automatically
+
+No manual configuration needed -- the proxy lifecycle is managed entirely by `free-coding-models`.
+
 ### Manual OpenCode Setup (Optional)
 
 Create or edit `~/.config/opencode/opencode.json`:
@@ -701,7 +707,7 @@ This script:
 │  1. Enter alternate screen buffer (like vim/htop/less)           │
 │  2. Ping ALL models in parallel                                  │
 │  3. Display real-time table with Latest/Avg/Stability/Up%        │
-│  4. Re-ping ALL models every 3 seconds (forever)                │
+│  4. Re-ping ALL models every 60 seconds (forever)               │
 │  5. Update rolling averages + stability scores per model        │
 │  6. User can navigate with ↑↓ and select with Enter            │
 │  7. On Enter (OpenCode): set model, launch OpenCode             │
@@ -786,7 +792,7 @@ This script:
 
 **Configuration:**
 - **Ping timeout**: 15 seconds per attempt (slow models get more time)
-- **Ping interval**: 3 seconds between complete re-pings of all models (adjustable with W/X keys)
+- **Ping interval**: 60 seconds between complete re-pings of all models (adjustable with W/X keys)
 - **Monitor mode**: Interface stays open forever, press Ctrl+C to exit
 
 **Flags:**
