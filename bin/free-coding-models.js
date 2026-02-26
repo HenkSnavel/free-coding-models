@@ -11,7 +11,7 @@
  *
  *   🎯 Key features:
  *   - Parallel pings across all models with animated real-time updates (multi-provider)
- *   - Continuous monitoring with 2-second ping intervals (never stops)
+ *   - Continuous monitoring with 60-second ping intervals (never stops)
  *   - Rolling averages calculated from ALL successful pings since start
  *   - Best-per-tier highlighting with medals (🥇🥈🥉)
  *   - Interactive navigation with arrow keys directly in the table
@@ -67,7 +67,7 @@
  *   - OpenCode config: ~/.config/opencode/opencode.json
  *   - OpenClaw config: ~/.openclaw/openclaw.json
  *   - Ping timeout: 15s per attempt
- *   - Ping interval: 2 seconds (continuous monitoring mode)
+ *   - Ping interval: 60 seconds (continuous monitoring mode)
  *   - Animation: 12 FPS with braille spinners
  *
  *   🚀 CLI flags:
@@ -720,7 +720,7 @@ const ALT_HOME   = '\x1b[H'
 // 📖 This allows easy addition of new model sources beyond NVIDIA NIM
 
 const PING_TIMEOUT  = 15_000   // 📖 15s per attempt before abort - slow models get more time
-const PING_INTERVAL = 3_000    // 📖 Ping all models every 3 seconds in continuous mode
+const PING_INTERVAL = 60_000   // 📖 60s between pings — avoids provider rate-limit bans
 
 const FPS          = 12
 const COL_MODEL    = 22
