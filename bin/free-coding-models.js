@@ -856,7 +856,7 @@ function sliceOverlayLines(lines, offset, terminalRows) {
 // 📖 Keep these constants in sync with renderTable() fixed shell lines.
 // 📖 If this drifts, model rows overflow and can push the title row out of view.
 const TABLE_HEADER_LINES = 4 // 📖 title, spacer, column headers, separator
-const TABLE_FOOTER_LINES = 7 // 📖 spacer, hints line 1, hints line 2, spacer, credit+contributors, discord, spacer
+const TABLE_FOOTER_LINES = 5 // 📖 spacer, hints line 1, hints line 2, spacer, credit+links
 const TABLE_FIXED_LINES = TABLE_HEADER_LINES + TABLE_FOOTER_LINES
 
 // 📖 Computes the visible slice of model rows that fits in the terminal.
@@ -1277,6 +1277,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
    // 📖 Profile save inline prompt — shown when Shift+S is pressed, replaces spacer line
    if (profileSaveMode) {
      lines.push(chalk.bgRgb(40, 20, 60)(`  📋 Save profile as: ${chalk.cyanBright(profileSaveBuffer + '▏')}  ${chalk.dim('Enter save  •  Esc cancel')}`))
+   } else {
+     lines.push('')
    }
   const intervalSec = Math.round(pingInterval / 1000)
 
@@ -3302,9 +3304,7 @@ async function main() {
           state.recommendAnswers.priority,
           state.recommendAnswers.contextBudget,
           3
-  )
-  lines.push('____________________')
-
+        )
         state.recommendResults = recs
         state.recommendPhase = 'results'
         state.recommendCursor = 0

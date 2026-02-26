@@ -2,6 +2,16 @@
 
 ---
 
+## 0.1.75
+
+### Fixed
+
+- **TUI header disappeared** — fixed `TABLE_FOOTER_LINES` constant (was 7, now 5) to match the actual footer line count after contributors line was removed in 0.1.73. The mismatch caused `calculateViewport()` to over-reserve vertical space, pushing the header off-screen.
+- **Missing spacer line** — restored the `else { lines.push('') }` branch that adds a blank line between model rows and navigation hints when the profile-save message is not shown.
+- **Stray debug line** — removed accidental `lines.push('____________________')` left in the Smart Recommend section.
+
+---
+
 ## 0.1.74
 
 ### Changed
