@@ -171,6 +171,54 @@ async function sendFeatureRequest(message) {
   }
 }
 
+// 📖 Discord bug report webhook configuration (anonymous bug reports)
+const DISCORD_BUG_WEBHOOK_URL = 'https://discord.com/api/webhooks/1476715954409963743/5cOLf7U_891f1jwxRBLIp2RIP9xYhr4rWtOhipzKKwVdFVl1Bj89X_fB6I_uGXZiGT9E'
+const DISCORD_BUG_BOT_NAME = 'TUI Bug Report'
+const DISCORD_BUG_EMBED_COLOR = 0xFF5733 // Rouge (RGB: 255, 87, 51)
+
+// 📖 sendBugReport: Send anonymous bug report to Discord via webhook
+// 📖 Called when user presses I key, types message, and presses Enter
+// 📖 Returns success/error status for UI feedback
+async function sendBugReport(message) {
+  try {
+    // 📖 Collect anonymous telemetry for context (no personal data)
+    const system = getTelemetrySystem()
+    const terminal = getTelemetryTerminal()
+    const nodeVersion = process.version
+    const arch = process.arch
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown'
+    
+    // 📖 Build Discord embed with rich metadata in footer (compact format)
+    const embed = {
+      description: message,
+      color: DISCORD_BUG_EMBED_COLOR,
+      timestamp: new Date().toISOString(),
+      footer: { 
+        text: `v${LOCAL_VERSION} • ${system} • ${terminal} • ${nodeVersion} • ${arch} • ${timezone}`
+      }
+    }
+
+    const response = await fetch(DISCORD_BUG_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: DISCORD_BUG_BOT_NAME,
+        embeds: [embed]
+      }),
+      signal: AbortSignal.timeout(10000) // 📖 10s timeout for webhook
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    return { success: true, error: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return { success: false, error: message }
+  }
+}
+
 // 📖 parseTelemetryEnv: Convert env var strings into booleans.
 // 📖 Returns true/false when value is recognized, otherwise null.
 function parseTelemetryEnv(value) {
@@ -1338,8 +1386,8 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
       : chalk.rgb(0, 200, 255)('Enter→OpenCode')
   // 📖 Line 1: core navigation + sorting shortcuts
   lines.push(chalk.dim(`  ↑↓ Navigate  •  `) + actionHint + chalk.dim(`  •  `) + chalk.yellow('F') + chalk.dim(` Favorite  •  R/Y/O/M/L/A/S/C/H/V/B/U Sort  •  `) + chalk.yellow('T') + chalk.dim(` Tier  •  `) + chalk.yellow('N') + chalk.dim(` Origin  •  W↓/X↑ (${intervalSec}s)  •  `) + chalk.rgb(255, 100, 50).bold('Z') + chalk.dim(` Mode  •  `) + chalk.yellow('P') + chalk.dim(` Settings  •  `) + chalk.rgb(0, 255, 80).bold('K') + chalk.dim(` Help`))
-  // 📖 Line 2: profiles, recommend, feature request, and extended hints — gives visibility to less-obvious features
-  lines.push(chalk.dim(`  `) + chalk.rgb(200, 150, 255).bold('⇧P') + chalk.dim(` Cycle profile  •  `) + chalk.rgb(200, 150, 255).bold('⇧S') + chalk.dim(` Save profile  •  `) + chalk.rgb(0, 200, 180).bold('Q') + chalk.dim(` Smart Recommend  •  `) + chalk.rgb(57, 255, 20).bold('J') + chalk.dim(` Request feature  •  `) + chalk.yellow('E') + chalk.dim(`/`) + chalk.yellow('D') + chalk.dim(` Tier ↑↓  •  `) + chalk.yellow('Esc') + chalk.dim(` Close overlay  •  Ctrl+C Exit`))
+  // 📖 Line 2: profiles, recommend, feature request, bug report, and extended hints — gives visibility to less-obvious features
+  lines.push(chalk.dim(`  `) + chalk.rgb(200, 150, 255).bold('⇧P') + chalk.dim(` Cycle profile  •  `) + chalk.rgb(200, 150, 255).bold('⇧S') + chalk.dim(` Save profile  •  `) + chalk.rgb(0, 200, 180).bold('Q') + chalk.dim(` Smart Recommend  •  `) + chalk.rgb(57, 255, 20).bold('J') + chalk.dim(` Request feature  •  `) + chalk.rgb(255, 87, 51).bold('I') + chalk.dim(` Report bug  •  `) + chalk.yellow('E') + chalk.dim(`/`) + chalk.yellow('D') + chalk.dim(` Tier ↑↓  •  `) + chalk.yellow('Esc') + chalk.dim(` Close overlay  •  Ctrl+C Exit`))
   lines.push('')
   lines.push(
     chalk.rgb(255, 150, 200)('  Made with 💖 & ☕ by \x1b]8;;https://github.com/vava-nessa\x1b\\vava-nessa\x1b]8;;\x1b\\') +
@@ -2865,11 +2913,16 @@ async function main() {
     activeProfile: getActiveProfileName(config), // 📖 Currently loaded profile name (or null)
     profileSaveMode: false,       // 📖 Whether the inline "Save profile" name input is active
     profileSaveBuffer: '',        // 📖 Typed characters for the profile name being saved
-    // 📖 Feature Request state (! key opens it)
+    // 📖 Feature Request state (J key opens it)
     featureRequestOpen: false,    // 📖 Whether the feature request overlay is active
     featureRequestBuffer: '',     // 📖 Typed characters for the feature request message
     featureRequestStatus: 'idle', // 📖 'idle'|'sending'|'success'|'error' — webhook send status
     featureRequestError: null,    // 📖 Last webhook error message
+    // 📖 Bug Report state (I key opens it)
+    bugReportOpen: false,         // 📖 Whether the bug report overlay is active
+    bugReportBuffer: '',          // 📖 Typed characters for the bug report message
+    bugReportStatus: 'idle',      // 📖 'idle'|'sending'|'success'|'error' — webhook send status
+    bugReportError: null,         // 📖 Last webhook error message
   }
 
   // 📖 Re-clamp viewport on terminal resize
@@ -3147,6 +3200,7 @@ async function main() {
     lines.push(`  ${chalk.yellow('F')}  Toggle favorite on selected row  ${chalk.dim('(⭐ pinned at top, persisted)')}`)
     lines.push(`  ${chalk.yellow('Q')}  Smart Recommend  ${chalk.dim('(🎯 find the best model for your task — questionnaire + live analysis)')}`)
     lines.push(`  ${chalk.rgb(57, 255, 20).bold('J')}  Request Feature  ${chalk.dim('(📝 send anonymous feedback to the project team)')}`)
+    lines.push(`  ${chalk.rgb(255, 87, 51).bold('I')}  Report Bug  ${chalk.dim('(🐛 send anonymous bug report to the project team)')}`)
     lines.push(`  ${chalk.yellow('P')}  Open settings  ${chalk.dim('(manage API keys, provider toggles, analytics, manual update)')}`)
     lines.push(`  ${chalk.yellow('Shift+P')}  Cycle config profile  ${chalk.dim('(switch between saved profiles live)')}`)
     lines.push(`  ${chalk.yellow('Shift+S')}  Save current config as a named profile  ${chalk.dim('(inline prompt — type name + Enter)')}`)
@@ -3491,6 +3545,112 @@ async function main() {
     return cleared.join('\n')
   }
 
+  // ─── Bug Report overlay renderer ─────────────────────────────────────────
+  // 📖 renderBugReport: Draw the overlay for anonymous Discord bug reports.
+  // 📖 Shows an input field where users can type bug reports, then sends to Discord webhook.
+  function renderBugReport() {
+    const EL = '\x1b[K'
+    const lines = []
+
+    // 📖 Calculate available space for multi-line input
+    const maxInputWidth = OVERLAY_PANEL_WIDTH - 8 // 8 = padding (4 spaces each side)
+    const maxInputLines = 10 // Show up to 10 lines of input
+    
+    // 📖 Split buffer into lines for display (with wrapping)
+    const wrapText = (text, width) => {
+      const words = text.split(' ')
+      const lines = []
+      let currentLine = ''
+      
+      for (const word of words) {
+        const testLine = currentLine ? currentLine + ' ' + word : word
+        if (testLine.length <= width) {
+          currentLine = testLine
+        } else {
+          if (currentLine) lines.push(currentLine)
+          currentLine = word
+        }
+      }
+      if (currentLine) lines.push(currentLine)
+      return lines
+    }
+
+    const inputLines = wrapText(state.bugReportBuffer, maxInputWidth)
+    const displayLines = inputLines.slice(0, maxInputLines)
+    
+    // 📖 Header
+    lines.push('')
+    lines.push(`  ${chalk.bold.rgb(255, 87, 51)('🐛 Bug Report')}  ${chalk.dim('— send anonymous bug reports to the project team')}`)
+    lines.push('')
+    
+    // 📖 Status messages (if any)
+    if (state.bugReportStatus === 'sending') {
+      lines.push(`  ${chalk.yellow('⏳ Sending...')}`)
+      lines.push('')
+    } else if (state.bugReportStatus === 'success') {
+      lines.push(`  ${chalk.greenBright.bold('✅ Successfully sent!')} ${chalk.dim('Closing overlay in 3 seconds...')}`)
+      lines.push('')
+      lines.push(`  ${chalk.dim('Thank you for your feedback! Your bug report has been sent to the project team.')}`)
+      lines.push('')
+    } else if (state.bugReportStatus === 'error') {
+      lines.push(`  ${chalk.red('❌ Error:')} ${chalk.yellow(state.bugReportError || 'Failed to send')}`)
+      lines.push(`  ${chalk.dim('Press Backspace to edit, or Esc to close')}`)
+      lines.push('')
+    } else {
+      lines.push(`  ${chalk.dim('Describe the bug you encountered. Press Enter to send, Esc to cancel.')}`)
+      lines.push(`  ${chalk.dim('Your message will be sent anonymously to the project team.')}`)
+      lines.push('')
+    }
+
+    // 📖 Input box with border
+    lines.push(chalk.dim(`  ┌─ ${chalk.cyan('Bug Details')} ${chalk.dim(`(${state.bugReportBuffer.length}/500 chars)`)} ─${'─'.repeat(maxInputWidth - 24)}┐`))
+    
+    // 📖 Display input lines (or placeholder if empty)
+    if (displayLines.length === 0 && state.bugReportStatus === 'idle') {
+      lines.push(chalk.dim(`  │${' '.repeat(maxInputWidth)}│`))
+      lines.push(chalk.dim(`  │  ${chalk.white.italic('Describe what happened...')}${' '.repeat(Math.max(0, maxInputWidth - 31))}│`))
+    } else {
+      for (const line of displayLines) {
+        const padded = line.padEnd(maxInputWidth)
+        lines.push(`  │ ${chalk.white(padded)} │`)
+      }
+    }
+    
+    // 📖 Fill remaining space if needed
+    const linesToFill = Math.max(0, maxInputLines - Math.max(displayLines.length, 1))
+    for (let i = 0; i < linesToFill; i++) {
+      lines.push(chalk.dim(`  │${' '.repeat(maxInputWidth)}│`))
+    }
+    
+    // 📖 Cursor indicator (only when not sending/success)
+    if (state.bugReportStatus === 'idle' || state.bugReportStatus === 'error') {
+      const cursorLine = inputLines.length > 0 ? inputLines.length - 1 : 0
+      const lastDisplayLine = displayLines.length - 1
+      // Add cursor indicator to the last line
+      if (lines.length > 0 && displayLines.length > 0) {
+        const lastLineIdx = lines.findIndex(l => l.includes('│ ') && !l.includes('Bug Details'))
+        if (lastLineIdx >= 0 && lastLineIdx < lines.length) {
+          // Add cursor blink
+          const lastLine = lines[lastLineIdx]
+          if (lastLine.includes('│')) {
+            lines[lastLineIdx] = lastLine.replace(/\s+│$/, chalk.rgb(255, 87, 51).bold('▏') + ' │')
+          }
+        }
+      }
+    }
+    
+    lines.push(chalk.dim(`  └${'─'.repeat(maxInputWidth + 2)}┘`))
+    
+    lines.push('')
+    lines.push(chalk.dim('  Enter Send  •  Esc Cancel  •  Backspace Delete'))
+
+    // 📖 Apply overlay tint and return
+    const BUG_REPORT_OVERLAY_BG = chalk.bgRgb(46, 20, 20) // Dark red-ish background (RGB: 46, 20, 20)
+    const tintedLines = tintOverlayLines(lines, BUG_REPORT_OVERLAY_BG)
+    const cleared = tintedLines.map(l => l + EL)
+    return cleared.join('\n')
+  }
+
   // 📖 stopRecommendAnalysis: cleanup timers if user cancels during analysis
   function stopRecommendAnalysis() {
     if (state.recommendAnalysisTimer) { clearInterval(state.recommendAnalysisTimer); state.recommendAnalysisTimer = null }
@@ -3668,6 +3828,73 @@ async function main() {
           if (state.featureRequestStatus === 'error') {
             state.featureRequestStatus = 'idle'
             state.featureRequestError = null
+          }
+        }
+      }
+      return
+    }
+
+    // 📖 Bug Report overlay: intercept ALL keys while overlay is active.
+    // 📖 Enter → send to Discord, Esc → cancel, Backspace → delete char, printable → append to buffer.
+    if (state.bugReportOpen) {
+      if (key.ctrl && key.name === 'c') { exit(0); return }
+
+      if (key.name === 'escape') {
+        // 📖 Cancel bug report — close overlay
+        state.bugReportOpen = false
+        state.bugReportBuffer = ''
+        state.bugReportStatus = 'idle'
+        state.bugReportError = null
+        return
+      }
+
+      if (key.name === 'return') {
+        // 📖 Send bug report to Discord webhook
+        const message = state.bugReportBuffer.trim()
+        if (message.length > 0 && state.bugReportStatus !== 'sending') {
+          state.bugReportStatus = 'sending'
+          const result = await sendBugReport(message)
+          if (result.success) {
+            // 📖 Success — show confirmation briefly, then close overlay after 3 seconds
+            state.bugReportStatus = 'success'
+            setTimeout(() => {
+              state.bugReportOpen = false
+              state.bugReportBuffer = ''
+              state.bugReportStatus = 'idle'
+              state.bugReportError = null
+            }, 3000)
+          } else {
+            // 📖 Error — show error message, keep overlay open
+            state.bugReportStatus = 'error'
+            state.bugReportError = result.error || 'Unknown error'
+          }
+        }
+        return
+      }
+
+      if (key.name === 'backspace') {
+        // 📖 Don't allow editing while sending or after success
+        if (state.bugReportStatus === 'sending' || state.bugReportStatus === 'success') return
+        state.bugReportBuffer = state.bugReportBuffer.slice(0, -1)
+        // 📖 Clear error status when user starts editing again
+        if (state.bugReportStatus === 'error') {
+          state.bugReportStatus = 'idle'
+          state.bugReportError = null
+        }
+        return
+      }
+
+      // 📖 Append printable characters (str is the raw character typed)
+      // 📖 Limit to 500 characters (Discord embed description limit)
+      if (str && str.length === 1 && !key.ctrl && !key.meta) {
+        // 📖 Don't allow editing while sending or after success
+        if (state.bugReportStatus === 'sending' || state.bugReportStatus === 'success') return
+        if (state.bugReportBuffer.length < 500) {
+          state.bugReportBuffer += str
+          // 📖 Clear error status when user starts editing again
+          if (state.bugReportStatus === 'error') {
+            state.bugReportStatus = 'idle'
+            state.bugReportError = null
           }
         }
       }
@@ -4155,6 +4382,15 @@ async function main() {
       return
     }
 
+    // 📖 I key: open Bug Report overlay (anonymous Discord bug reports)
+    if (key.name === 'i') {
+      state.bugReportOpen = true
+      state.bugReportBuffer = ''
+      state.bugReportStatus = 'idle'
+      state.bugReportError = null
+      return
+    }
+
     // 📖 Interval adjustment keys: W=decrease (faster), X=increase (slower)
     // 📖 Minimum 1s, maximum 60s
     if (key.name === 'w') {
@@ -4288,11 +4524,11 @@ async function main() {
 
   process.stdin.on('keypress', onKeyPress)
 
-  // 📖 Animation loop: render settings overlay, recommend overlay, help overlay, feature request overlay, OR main table
+  // 📖 Animation loop: render settings overlay, recommend overlay, help overlay, feature request overlay, bug report overlay, OR main table
   const ticker = setInterval(() => {
     state.frame++
     // 📖 Cache visible+sorted models each frame so Enter handler always matches the display
-    if (!state.settingsOpen && !state.recommendOpen && !state.featureRequestOpen) {
+    if (!state.settingsOpen && !state.recommendOpen && !state.featureRequestOpen && !state.bugReportOpen) {
       const visible = state.results.filter(r => !r.hidden)
       state.visibleSorted = sortResultsWithPinnedFavorites(visible, state.sortColumn, state.sortDirection)
     }
@@ -4302,9 +4538,11 @@ async function main() {
         ? renderRecommend()
         : state.featureRequestOpen
           ? renderFeatureRequest()
-          : state.helpVisible
-            ? renderHelp()
-            : renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode, state.activeProfile, state.profileSaveMode, state.profileSaveBuffer)
+          : state.bugReportOpen
+            ? renderBugReport()
+            : state.helpVisible
+              ? renderHelp()
+              : renderTable(state.results, state.pendingPings, state.frame, state.cursor, state.sortColumn, state.sortDirection, state.pingInterval, state.lastPingTime, state.mode, tierFilterMode, state.scrollOffset, state.terminalRows, originFilterMode, state.activeProfile, state.profileSaveMode, state.profileSaveBuffer)
     process.stdout.write(ALT_HOME + content)
   }, Math.round(1000 / FPS))
 
