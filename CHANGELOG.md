@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.72
+
+### Changed
+
+- **TUI footer spacing** — added extra empty line before contributors line for better readability in terminals.
+
+---
+
 ## 0.1.71
 
 ### Changed

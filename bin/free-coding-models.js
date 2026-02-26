@@ -1309,6 +1309,7 @@ function renderTable(results, pendingPings, frame, cursor = null, sortColumn = '
     chalk.dim('  •  ') +
     chalk.dim('Ctrl+C Exit')
   )
+  lines.push('') // Empty line for terminal spacing
   lines.push(chalk.dim('  (vava-nessa • erwinh22 • whit3rabbit • skylaweber)'))
   lines.push('')
   // 📖 Append \x1b[K (erase to EOL) to each line so leftover chars from previous
