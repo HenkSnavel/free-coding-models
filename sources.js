@@ -230,6 +230,18 @@ export const googleai = [
   ['gemma-3-4b-it',                            'Gemma 3 4B',         'C',  '10.0%', '128k'],
 ]
 
+// 📖 ZAI source - https://open.z.ai
+// 📖 Free API keys available at https://open.z.ai — GLM frontier models
+// 📖 OpenAI-compatible endpoint for coding tasks
+export const zai = [
+  // ── S+ tier — SWE-bench Verified ≥70% ──
+  ['zai/glm-5',                                           'GLM-5',               'S+', '77.8%', '128k'],
+  ['zai/glm-4.7',                                         'GLM-4.7',             'S+', '73.8%', '200k'],
+  ['zai/glm-4.5',                                         'GLM-4.5',             'S+', '75.0%', '128k'],
+  ['zai/glm-4.5-air',                                     'GLM-4.5-Air',         'S+', '72.0%', '128k'],
+  ['zai/glm-4.6',                                         'GLM-4.6',             'S+', '70.0%', '128k'],
+]
+
 // 📖 SiliconFlow source - https://cloud.siliconflow.cn
 // 📖 OpenAI-compatible endpoint: https://api.siliconflow.com/v1/chat/completions
 // 📖 Free model quotas vary by model and can change over time.
@@ -345,6 +357,11 @@ export const sources = {
     name: 'Google AI',
     url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     models: googleai,
+  },
+  zai: {
+    name: 'ZAI',
+    url: 'https://api.z.ai/api/coding/paas/v4/chat/completions',
+    models: zai,
   },
   siliconflow: {
     name: 'SiliconFlow',

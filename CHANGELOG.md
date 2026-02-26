@@ -6,6 +6,20 @@
 
 ### Added
 
+- **[fork] ZAI reverse proxy for OpenCode** -- When selecting a ZAI model, a local HTTP proxy automatically starts to translate OpenCode's `/v1/*` requests to ZAI's `/api/coding/paas/v4/*` API format. Proxy lifecycle is fully managed (starts on Enter, stops on OpenCode exit).
+- **[fork] Stale config cleanup on OpenCode exit** -- The `spawnOpenCode` exit handler now removes the ZAI provider block from `opencode.json` so leftover config does not cause "model not valid" errors on the next manual OpenCode launch.
+
+### Fixed
+
+- **[fork] OpenCode config path on Windows** -- OpenCode uses `xdg-basedir` which resolves to `%USERPROFILE%\.config` on all platforms. We were writing to `%APPDATA%\Roaming\opencode\` on Windows, so OpenCode never saw the ZAI provider config. Config path is now `~/.config/opencode/opencode.json` on all platforms.
+- **[fork] `apiKey` field for ZAI provider** -- Changed from `{env:ZAI_API_KEY}` template string to the actual resolved key so OpenCode's `@ai-sdk/openai-compatible` provider can authenticate immediately.
+
+### Changed
+
+- **[fork] Default ping interval 3s -> 60s** -- Reduced re-ping frequency from every 3 seconds to every 60 seconds for a calmer monitoring experience (still adjustable with W/X keys).
+- **[fork] Suppress MaxListeners warning** -- Set `NODE_NO_WARNINGS=1` in the OpenCode child process environment to suppress Node.js EventEmitter warnings.
+- **[fork] ZAI models synced to 5** -- Updated `sources.js` to 5 ZAI API models with SWE-bench scores: GLM-5 (77.8%), GLM-4.5 (75.0%), GLM-4.7 (73.8%), GLM-4.5-Air (72.0%), GLM-4.6 (70.0%).
+- **[fork] README updates** -- Updated model/provider counts (139 models, 18 providers), ZAI model table with SWE-bench scores, ping interval references (60s), added ZAI proxy documentation.
 - **Smart Recommend (Q key)** — new modal overlay with a 3-question wizard (task type, priority, context budget) that runs a 10-second targeted analysis (2 pings/sec) and recommends the Top 3 models for your use case. Recommended models are pinned above favorites with 🎯 prefix and green row highlight.
 - **Config Profiles** — save/load named configuration profiles (`--profile work`, `--profile fast`, etc.). Each profile stores API keys, enabled providers, favorites, tier filters, ping interval, and default sort. **Shift+P** cycles through profiles live in the TUI.
 - **`--recommend` CLI flag** — auto-opens the Smart Recommend overlay on startup.
@@ -31,6 +45,7 @@
 
 ### Added
 
+- **[fork] ZAI provider preserved** — merged upstream v0.1.67 while retaining ZAI (z.ai) provider with 7 GLM models (GLM-5, GLM-4.7, GLM-4.7-Flash, GLM-4.7-FlashX, GLM-4.6, GLM-4.6V-FlashX, GLM-OCR). ZAI prefix stripping, OpenCode/Desktop integration, and provider metadata all carried forward.
 - **Stability Score** — new composite 0–100 metric combining p95 latency (30%), jitter/σ (30%), spike rate (20%), and uptime (20%). Displayed as a color-coded column in the TUI (green ≥80, cyan ≥60, yellow ≥40, red <40).
 - **p95 latency** (`getP95`) — 95th percentile latency from successful pings. Answers "95% of requests are faster than X ms."
 - **Jitter** (`getJitter`) — standard deviation of latency. Low jitter = predictable, high jitter = erratic/spiky.
