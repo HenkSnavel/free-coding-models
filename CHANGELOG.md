@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.78
+
+### Added
+
+- **Auto-update system** — removed manual update popup; now automatically installs updates and opens changelog in browser. Update proceeds immediately after opening changelog.
+
+---
+
 ## 0.1.77
 
 ### Added

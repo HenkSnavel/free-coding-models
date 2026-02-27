@@ -2797,31 +2797,35 @@ async function main() {
     // Silently fail - don't block the app if npm registry is unreachable
   }
 
-  // 📖 Show update notification menu if a new version is available
+  // 📖 Auto-update system: force updates and handle changelog automatically
   if (latestVersion) {
-    const action = await promptUpdateNotification(latestVersion)
-    if (action === 'update') {
-      runUpdate(latestVersion)
-      return // runUpdate will restart the process
-    } else if (action === 'changelogs') {
-      console.log()
-      console.log(chalk.cyan('  Opening changelog in browser...'))
-      console.log()
-      const { execSync } = require('child_process')
-      const changelogUrl = 'https://github.com/vava-nessa/free-coding-models/releases'
-      try {
-        if (isMac) {
-          execSync(`open "${changelogUrl}"`, { stdio: 'ignore' })
-        } else if (isWindows) {
-          execSync(`start "" "${changelogUrl}"`, { stdio: 'ignore' })
-        } else {
-          execSync(`xdg-open "${changelogUrl}"`, { stdio: 'ignore' })
-        }
-      } catch {
-        console.log(chalk.dim(`  Could not open browser. Visit: ${changelogUrl}`))
+    console.log()
+    console.log(chalk.bold.red('  ⚠ AUTO-UPDATE AVAILABLE'))
+    console.log(chalk.red(`  Version ${latestVersion} will be installed automatically`))
+    console.log(chalk.dim('  Opening changelog in browser...'))
+    console.log()
+    
+    // 📖 Open changelog automatically
+    const { execSync } = require('child_process')
+    const changelogUrl = 'https://github.com/vava-nessa/free-coding-models/releases'
+    try {
+      if (isMac) {
+        execSync(`open "${changelogUrl}"`, { stdio: 'ignore' })
+      } else if (isWindows) {
+        execSync(`start "" "${changelogUrl}"`, { stdio: 'ignore' })
+      } else {
+        execSync(`xdg-open "${changelogUrl}"`, { stdio: 'ignore' })
       }
+      console.log(chalk.green('  ✅ Changelog opened in browser'))
+    } catch {
+      console.log(chalk.yellow('  ⚠ Could not open browser automatically'))
+      console.log(chalk.dim(`  Visit manually: ${changelogUrl}`))
     }
-    // If action is null (Continue without update) or changelogs, proceed to main app
+    
+    // 📖 Force update immediately
+    console.log(chalk.cyan('  🚀 Starting auto-update...'))
+    runUpdate(latestVersion)
+    return // runUpdate will restart the process
   }
 
   // 📖 Build results from MODELS — only include enabled providers
