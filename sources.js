@@ -290,6 +290,26 @@ export const perplexity = [
   ['sonar',                                    'Sonar',               'B',  '25.0%', '128k'],
 ]
 
+// 📖 Alibaba Cloud (DashScope) source - https://dashscope-intl.aliyuncs.com
+// 📖 OpenAI-compatible endpoint: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+// 📖 Free tier: 1M tokens per model (Singapore region only), valid for 90 days
+// 📖 Get API key: https://dashscope.console.alibabacloud.com
+// 📖 Env var: DASHSCOPE_API_KEY
+// 📖 Qwen3-Coder models: optimized coding models with excellent SWE-bench scores
+export const qwen = [
+  // ── S+ tier — SWE-bench Verified ≥70% ──
+  ['qwen3-coder-plus',                        'Qwen3 Coder Plus',    'S+', '69.6%', '256k'],
+  ['qwen3-coder-480b-a35b-instruct',          'Qwen3 Coder 480B',    'S+', '70.6%', '256k'],
+  // ── S tier — SWE-bench Verified 60–70% ──
+  ['qwen3-coder-max',                         'Qwen3 Coder Max',     'S',  '67.0%', '256k'],
+  ['qwen3-coder-next',                        'Qwen3 Coder Next',    'S',  '65.0%', '256k'],
+  ['qwen3-235b-a22b-instruct',                'Qwen3 235B',          'S',  '70.0%', '256k'],
+  ['qwen3-next-80b-a3b-instruct',             'Qwen3 80B Instruct',  'S',  '65.0%', '128k'],
+  // ── A+ tier — SWE-bench Verified 50–60% ──
+  ['qwen3-32b',                               'Qwen3 32B',           'A+', '50.0%', '128k'],
+  ['qwen2.5-coder-32b-instruct',              'Qwen2.5 Coder 32B',   'A',  '46.0%', '32k'],
+]
+
 // 📖 iFlow source - https://platform.iflow.cn
 // 📖 OpenAI-compatible endpoint: https://apis.iflow.cn/v1/chat/completions
 // 📖 Free for individual users with no request limits (API key expires every 7 days)
@@ -403,6 +423,11 @@ export const sources = {
     name: 'Perplexity',
     url: 'https://api.perplexity.ai/chat/completions',
     models: perplexity,
+  },
+  qwen: {
+    name: 'Alibaba Cloud (DashScope)',
+    url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
+    models: qwen,
   },
   iflow: {
     name: 'iFlow',

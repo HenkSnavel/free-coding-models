@@ -2,8 +2,8 @@
   <img src="https://img.shields.io/npm/v/free-coding-models?color=76b900&label=npm&logo=npm" alt="npm version">
   <img src="https://img.shields.io/node/v/free-coding-models?color=76b900&logo=node.js" alt="node version">
   <img src="https://img.shields.io/npm/l/free-coding-models?color=76b900" alt="license">
-  <img src="https://img.shields.io/badge/models-150-76b900?logo=nvidia" alt="models count">
-  <img src="https://img.shields.io/badge/providers-19-blue" alt="providers count">
+  <img src="https://img.shields.io/badge/models-158-76b900?logo=nvidia" alt="models count">
+  <img src="https://img.shields.io/badge/providers-20-blue" alt="providers count">
 </p>
 
 <h1 align="center">free-coding-models</h1>
@@ -64,7 +64,7 @@
 ## ✨ Features
 
 - **🎯 Coding-focused** — Only LLM models optimized for code generation, not chat or vision
-- **🌐 Multi-provider** — Models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, Google AI, SiliconFlow, Together AI, Cloudflare Workers AI, Perplexity API, and ZAI
+- **🌐 Multi-provider** — Models from NVIDIA NIM, Groq, Cerebras, SambaNova, OpenRouter, Hugging Face Inference, Replicate, DeepInfra, Fireworks AI, Codestral, Hyperbolic, Scaleway, Google AI, SiliconFlow, Together AI, Cloudflare Workers AI, Perplexity API, Alibaba Cloud (DashScope), and ZAI
 - **⚙️ Settings screen** — Press `P` to manage provider API keys, enable/disable providers, test keys live, and manually check/install updates
 - **🚀 Parallel pings** — All models tested simultaneously via native `fetch`
 - **📊 Real-time animation** — Watch latency appear live in alternate screen buffer
@@ -80,12 +80,11 @@
 - **🦞 OpenClaw integration** — Sets selected model as default provider in `~/.openclaw/openclaw.json`
 - **📝 Feature Request (J key)** — Send anonymous feedback directly to the project team via a full-screen overlay with multi-line input (includes anonymous OS/terminal metadata in message footer only)
 - **🐛 Bug Report (I key)** — Send anonymous bug reports directly to the project team via a full-screen overlay with multi-line input (includes anonymous OS/terminal metadata in message footer only)
-- **🎨 Clean output** — Zero scrollback pollution, interface stays open until Ctrl+C
-- **📶 Status indicators** — UP ✅ · No Key 🔑 · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
-- **🔍 Keyless latency** — Models are pinged even without an API key — a `🔑 NO KEY` status confirms the server is reachable with real latency shown, so you can compare providers before committing to a key
-- **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
-- **⭐ Persistent favorites** — Press `F` on a selected row to pin/unpin it; favorites stay at top with a dark orange background and a star before the model name
-- **📊 Privacy-first analytics (optional)** — anonymous PostHog events with explicit consent + opt-out
+ - **🎨 Clean output** — Zero scrollback pollution, interface stays open until Ctrl+C
+ - **📶 Status indicators** — UP ✅ · No Key 🔑 · Timeout ⏳ · Overloaded 🔥 · Not Found 🚫
+ - **🔍 Keyless latency** — Models are pinged even without an API key — a `🔑 NO KEY` status confirms the server is reachable with real latency shown, so you can compare providers before committing to a key
+ - **🏷 Tier filtering** — Filter models by tier letter (S, A, B, C) with `--tier` flag or dynamically with `T` key
+ - **⭐ Persistent favorites** — Press `F` on a selected row to pin/unpin it; favorites stay at top with a dark orange background and a star before the model name
 
 ---
 
@@ -158,13 +157,10 @@ free-coding-models --openclaw
 # Show only top-tier models (A+, S, S+)
 free-coding-models --best
 
-# Analyze for 10 seconds and output the most reliable model
-free-coding-models --fiable
+ # Analyze for 10 seconds and output the most reliable model
+ free-coding-models --fiable
 
-# Disable anonymous analytics for this run
-free-coding-models --no-telemetry
-
-# Filter models by tier letter
+ # Filter models by tier letter
 free-coding-models --tier S          # S+ and S only
 free-coding-models --tier A          # A+, A, A- only
 free-coding-models --tier B          # B+, B only
@@ -263,11 +259,10 @@ Press **`P`** to open the Settings screen at any time:
 - **U** — manually check npm for a newer version
 - **Esc** — close settings and reload models list
 
-Keys are saved to `~/.free-coding-models.json` (permissions `0600`).
+ Keys are saved to `~/.free-coding-models.json` (permissions `0600`).
 
-Analytics toggle is in the same Settings screen (`P`) as a dedicated row (toggle with Enter or Space).
-Manual update is in the same Settings screen (`P`) under **Maintenance** (Enter to check, Enter again to install when an update is available).
-Favorites are also persisted in the same config file and survive restarts.
+ Manual update is in the same Settings screen (`P`) under **Maintenance** (Enter to check, Enter again to install when an update is available).
+ Favorites are also persisted in the same config file and survive restarts.
 
 ### Environment variable overrides
 
@@ -284,23 +279,13 @@ DEEPINFRA_API_KEY=di_xxx free-coding-models
 FIREWORKS_API_KEY=fw_xxx free-coding-models
 SILICONFLOW_API_KEY=sk_xxx free-coding-models
 TOGETHER_API_KEY=together_xxx free-coding-models
-CLOUDFLARE_API_TOKEN=cf_xxx CLOUDFLARE_ACCOUNT_ID=your_account_id free-coding-models
-PERPLEXITY_API_KEY=pplx_xxx free-coding-models
-ZAI_API_KEY=zai-xxx free-coding-models
-FREE_CODING_MODELS_TELEMETRY=0 free-coding-models
-```
+ CLOUDFLARE_API_TOKEN=cf_xxx CLOUDFLARE_ACCOUNT_ID=your_account_id free-coding-models
+ PERPLEXITY_API_KEY=pplx_xxx free-coding-models
+ ZAI_API_KEY=zai-xxx free-coding-models
+ DASHSCOPE_API_KEY=sk-xxx free-coding-models
+ ```
 
-Telemetry env vars:
-
-- `FREE_CODING_MODELS_TELEMETRY=0|1` — force disable/enable analytics
-- `FREE_CODING_MODELS_POSTHOG_KEY` — PostHog project API key (required to send events)
-- `FREE_CODING_MODELS_POSTHOG_HOST` — optional ingest host (`https://eu.i.posthog.com` default)
-- `FREE_CODING_MODELS_TELEMETRY_DEBUG=1` — optional stderr debug logs for telemetry troubleshooting
-
-On first run (or when consent policy changes), the CLI asks users to accept or decline anonymous analytics.
-When enabled, telemetry events include: event name, app version, selected mode, system (`macOS`/`Windows`/`Linux`), and terminal family (`Terminal.app`, `iTerm2`, `kitty`, `Warp`, `WezTerm`, etc., with generic fallback from `TERM_PROGRAM`/`TERM`).
-
-### Get your free API keys
+ ### Get your free API keys
 
 **NVIDIA NIM** (44 models, S+ → C tier):
 1. Sign up at [build.nvidia.com](https://build.nvidia.com)
@@ -369,6 +354,11 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 1. Sign up at [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
 2. Create API key (`PERPLEXITY_API_KEY`)
 
+**Alibaba Cloud (DashScope)** (8 models, Qwen3-Coder family):
+1. Sign up at [dashscope.console.alibabacloud.com](https://dashscope.console.alibabacloud.com)
+2. Activate Model Studio (1M free tokens per model, Singapore region, 90 days)
+3. Create API key (`DASHSCOPE_API_KEY`)
+
 **ZAI** (5 models, GLM family):
 1. Sign up at [z.ai](https://z.ai)
 2. Subscribe to Coding Plan
@@ -380,7 +370,16 @@ When enabled, telemetry events include: event name, app version, selected mode, 
 
 ## 🤖 Coding Models
 
-**150 coding models** across 19 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+**158 coding models** across 20 providers and 8 tiers, ranked by [SWE-bench Verified](https://www.swebench.com) — the industry-standard benchmark measuring real GitHub issue resolution. Scores are self-reported by providers unless noted.
+
+### Alibaba Cloud (DashScope) (8 models)
+
+| Tier | SWE-bench | Model |
+|------|-----------|-------|
+| **S+** ≥70% | Qwen3 Coder Plus (69.6%), Qwen3 Coder 480B (70.6%) |
+| **S** 60–70% | Qwen3 Coder Max (67.0%), Qwen3 Coder Next (65.0%), Qwen3 235B (70.0%), Qwen3 80B Instruct (65.0%) |
+| **A+** 50–60% | Qwen3 32B (50.0%) |
+| **A** 40–50% | Qwen2.5 Coder 32B (46.0%) |
 
 ### ZAI Coding Plan (5 models)
 
@@ -757,12 +756,10 @@ This script:
 | `SILICONFLOW_API_KEY` | SiliconFlow key |
 | `TOGETHER_API_KEY` | Together AI key |
 | `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_API_KEY` | Cloudflare Workers AI token/key |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID (required for Workers AI endpoint URL) |
-| `PERPLEXITY_API_KEY` / `PPLX_API_KEY` | Perplexity API key |
-| `ZAI_API_KEY` | ZAI key |
-| `FREE_CODING_MODELS_TELEMETRY` | `0` disables analytics, `1` enables analytics |
-| `FREE_CODING_MODELS_POSTHOG_KEY` | PostHog project API key used for anonymous event capture |
-| `FREE_CODING_MODELS_POSTHOG_HOST` | Optional PostHog ingest host (`https://eu.i.posthog.com` default) |
+ | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID (required for Workers AI endpoint URL) |
+  | `PERPLEXITY_API_KEY` / `PPLX_API_KEY` | Perplexity API key |
+  | `ZAI_API_KEY` | ZAI key |
+  | `DASHSCOPE_API_KEY` | Alibaba Cloud (DashScope) API key |
 
 **Config file:** `~/.free-coding-models.json` (created automatically, permissions `0600`)
 
@@ -795,16 +792,11 @@ This script:
     "cloudflare": { "enabled": true },
     "perplexity": { "enabled": true },
     "zai":      { "enabled": true }
-  },
-  "favorites": [
-    "nvidia/deepseek-ai/deepseek-v3.2"
-  ],
-  "telemetry": {
-    "enabled": true,
-    "consentVersion": 1,
-    "anonymousId": "anon_550e8400-e29b-41d4-a716-446655440000"
-  }
-}
+   },
+   "favorites": [
+     "nvidia/deepseek-ai/deepseek-v3.2"
+   ]
+ }
 ```
 
 **Configuration:**
@@ -818,12 +810,11 @@ This script:
 |------|-------------|
 | *(none)* | Show startup menu to choose OpenCode or OpenClaw |
 | `--opencode` | OpenCode CLI mode — Enter launches OpenCode CLI with selected model |
-| `--opencode-desktop` | OpenCode Desktop mode — Enter sets model & opens OpenCode Desktop app |
-| `--openclaw` | OpenClaw mode — Enter sets selected model as default in OpenClaw |
-| `--best` | Show only top-tier models (A+, S, S+) |
-| `--fiable` | Analyze 10 seconds, output the most reliable model as `provider/model_id` |
-| `--no-telemetry` | Disable anonymous analytics for this run |
-| `--tier S` | Show only S+ and S tier models |
+ | `--opencode-desktop` | OpenCode Desktop mode — Enter sets model & opens OpenCode Desktop app |
+ | `--openclaw` | OpenClaw mode — Enter sets selected model as default in OpenClaw |
+ | `--best` | Show only top-tier models (A+, S, S+) |
+ | `--fiable` | Analyze 10 seconds, output the most reliable model as `provider/model_id` |
+ | `--tier S` | Show only S+ and S tier models |
 | `--tier A` | Show only A+, A, A- tier models |
 | `--tier B` | Show only B+, B tier models |
 | `--tier C` | Show only C tier models |
@@ -837,7 +828,7 @@ This script:
 - **F** — Toggle favorite on selected model (⭐ in Model column, pinned at top)
 - **T** — Cycle tier filter (All → S+ → S → A+ → A → A- → B+ → B → C → All)
 - **Z** — Cycle mode (OpenCode CLI → OpenCode Desktop → OpenClaw)
-- **P** — Open Settings (manage API keys, provider toggles, analytics toggle, manual update, profiles)
+ - **P** — Open Settings (manage API keys, provider toggles, manual update, profiles)
 - **Shift+P** — Cycle through saved profiles (switches live TUI settings)
 - **Shift+S** — Save current TUI settings as a named profile (inline prompt)
 - **Q** — Open Smart Recommend overlay (find the best model for your task)
@@ -850,10 +841,10 @@ This script:
 
 Pressing **K** now shows a full in-app reference: main hotkeys, settings hotkeys, and CLI flags with usage examples.
 
-**Keyboard shortcuts (Settings screen — `P` key):**
-- **↑↓** — Navigate providers, analytics row, maintenance row, and profile rows
-- **Enter** — Edit API key inline, toggle analytics, check/install update, or load a profile
-- **Space** — Toggle provider enabled/disabled, or toggle analytics
+ **Keyboard shortcuts (Settings screen — `P` key):**
+ - **↑↓** — Navigate providers, maintenance row, and profile rows
+ - **Enter** — Edit API key inline, check/install update, or load a profile
+ - **Space** — Toggle provider enabled/disabled
 - **T** — Test current provider's API key (fires a live ping)
 - **U** — Check for updates manually from settings
 - **Backspace** — Delete the selected profile (only on profile rows)
@@ -943,4 +934,10 @@ We welcome contributions! Feel free to open issues, submit pull requests, or get
 
 For questions or issues, open a [GitHub issue](https://github.com/vava-nessa/free-coding-models/issues).
 
-💬 Let's talk about the project on Discord: https://discord.gg/5MbTnDC3Md
+ 💬 Let's talk about the project on Discord: https://discord.gg/5MbTnDC3Md
+
+---
+
+<p align="center">
+  <sub>We collect anonymous usage data to improve the tool and fix bugs. No personal information is ever collected.</sub>
+</p>
