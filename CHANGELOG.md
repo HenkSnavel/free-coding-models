@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.80
+
+### Fixed
+
+- **Settings menu crash** — fixed `ReferenceError: telemetryRowIdx is not defined` error when opening Settings (P key). Removed lingering reference to the deleted telemetry row index.
+
+---
+
 ## 0.1.79
 
 ### Added

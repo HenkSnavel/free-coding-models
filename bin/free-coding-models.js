@@ -2907,7 +2907,7 @@ async function main() {
     const selectedProviderKey = providerKeys[Math.min(state.settingsCursor, providerKeys.length - 1)]
     const selectedSource = sources[selectedProviderKey]
     const selectedMeta = PROVIDER_METADATA[selectedProviderKey] || {}
-    if (selectedSource && state.settingsCursor < telemetryRowIdx) {
+    if (selectedSource && state.settingsCursor < providerKeys.length) {
       const selectedKey = getApiKey(state.config, selectedProviderKey)
       const setupStatus = selectedKey ? chalk.green('API key detected ✅') : chalk.yellow('API key missing ⚠')
       lines.push(`  ${chalk.bold('Setup Instructions')} — ${selectedMeta.label || selectedSource.name || selectedProviderKey}`)
