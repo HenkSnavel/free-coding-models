@@ -716,6 +716,99 @@ This script:
 
 ---
 
+## 🌐 Router Mode (OpenAI-compatible Gateway)
+
+`free-coding-models --router` starts a local HTTP server that acts as an OpenAI-compatible gateway. It automatically selects the best available provider and model based on your live ping data, and fails over to the next best model if a provider returns an error.
+
+### Quick start
+
+```bash
+# Start the router on default port 3000
+free-coding-models --router
+
+# Custom port
+free-coding-models --router --port 8080
+
+# Or via environment variable
+PORT=8080 free-coding-models --router
+
+# Filter to top-tier models only
+free-coding-models --router --tier S
+
+# Best models only (S+, S, A+)
+free-coding-models --router --best
+
+# Use a saved config profile
+free-coding-models --router --profile work
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Server health — `{ status: "ok", models_up: N, models_total: M }` |
+| `GET` | `/v1/models` | OpenAI-compatible model list filtered by your config |
+| `POST` | `/v1/chat/completions` | Forward to best available provider with automatic failover |
+| `POST` | `/v1/completions` | Forward to best available provider with automatic failover |
+
+### Automatic failover
+
+On each request the router:
+1. Sorts all eligible models by: **up status** → **avg latency** → **tier rank**
+2. Tries the first candidate — if it returns `429` or `5xx`, moves to the next
+3. Streams the first successful response back to the client (SSE streaming is proxied)
+4. Returns `503` only if all candidates fail
+
+### OpenClaw configuration
+
+Point OpenClaw at the router instead of a specific provider. No API key required on the client side. The provider name (e.g. `fcm-router`) is an arbitrary label you choose — it appears as a prefix in model IDs within OpenClaw:
+
+```json
+{
+  "models": {
+    "providers": {
+      "fcm-router": {
+        "baseUrl": "http://localhost:3000",
+        "api": "openai-completions",
+        "authHeader": false
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "fcm-router/deepseek-ai/deepseek-v3.2"
+      }
+    }
+  }
+}
+```
+
+> The `fcm-router` label is just the OpenClaw provider key you choose. The model after the `/` can be any model ID returned by `GET /v1/models`. The router ignores the model field and always forwards to the best available provider.
+
+### Running two instances with different filters
+
+Run on different ports — each instance uses its own CLI flags:
+
+```bash
+# Terminal 1: S-tier models only on port 3000
+free-coding-models --router --tier S --port 3000
+
+# Terminal 2: All models on port 3001
+free-coding-models --router --port 3001
+```
+
+Then configure your AI tool to point at whichever instance matches your needs.
+
+### Notes
+
+- The router starts immediately and begins pinging models in the background (every 60s).
+- Requests are forwarded before all pings complete — if no ping data is available yet, models are sorted by tier rank.
+- Replicate is not supported in router mode (uses a non-OpenAI-compatible endpoint).
+- The router reads your `~/.free-coding-models.json` config at startup. Restart to pick up key changes.
+
+---
+
 ## ⚙️ How it works
 
 ```

@@ -2,6 +2,17 @@
 
 ---
 
+## 0.1.81
+
+### Added
+
+- **`--router` mode** — start an OpenAI-compatible HTTP gateway server that selects the best available provider/model and supports automatic failover. Use `--port <n>` (or `$PORT`) to set the port (default 3000). Supports streaming (SSE proxy), tier filters (`--tier`, `--best`), config profiles (`--profile`), and provider enable/disable state from config.
+- **Endpoints:** `GET /health`, `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/completions`.
+- **OpenClaw gateway config:** Point OpenClaw at `http://localhost:3000` with `api: "openai-completions"` and `authHeader: false` — no API key needed on the client side.
+- **README:** Added "Router Mode" section with Quick Start, endpoint reference, OpenClaw configuration, and two-instance examples.
+
+---
+
 ## 0.1.80
 
 ### Fixed

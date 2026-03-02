@@ -29,12 +29,13 @@ import { nvidiaNim, sources, MODELS } from '../sources.js'
 import {
   getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore,
   sortResults, filterByTier, findBestModel, parseArgs,
+  buildRouterCandidates, sortCandidatesForFailover, BEST_TIERS,
   TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP,
   scoreModelForTask, getTopRecommendations, TASK_TYPES, PRIORITY_TYPES, CONTEXT_BUDGETS
 } from '../lib/utils.js'
 import {
   _emptyProfileSettings, saveAsProfile, loadProfile, listProfiles,
-  deleteProfile, getActiveProfileName, setActiveProfile
+  deleteProfile, getActiveProfileName, setActiveProfile, isProviderEnabled
 } from '../lib/config.js'
 
 // ─── Helper: create a mock model result ──────────────────────────────────────
@@ -668,6 +669,141 @@ describe('parseArgs', () => {
   it('flags are case-insensitive', () => {
     assert.equal(parseArgs(argv('--BEST')).bestMode, true)
     assert.equal(parseArgs(argv('--OpenCode')).openCodeMode, true)
+  })
+
+  it('detects --router flag', () => {
+    assert.equal(parseArgs(argv('--router')).routerMode, true)
+    assert.equal(parseArgs(argv()).routerMode, false)
+  })
+
+  it('parses --port value', () => {
+    assert.equal(parseArgs(argv('--port', '4000')).port, 4000)
+    assert.equal(parseArgs(argv()).port, null)
+  })
+
+  it('returns null port when --port has no value', () => {
+    assert.equal(parseArgs(argv('--port')).port, null)
+    assert.equal(parseArgs(argv('--port', '--best')).port, null)
+  })
+
+  it('does not capture --port value as apiKey', () => {
+    assert.equal(parseArgs(argv('--port', '3000')).apiKey, null)
+    assert.equal(parseArgs(argv('--router', '--port', '4000')).apiKey, null)
+  })
+
+  it('handles --router with other flags', () => {
+    const result = parseArgs(argv('--router', '--tier', 'S', '--port', '8080'))
+    assert.equal(result.routerMode, true)
+    assert.equal(result.tierFilter, 'S')
+    assert.equal(result.port, 8080)
+    assert.equal(result.apiKey, null)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📖 3b. ROUTER UTILITIES — buildRouterCandidates + sortCandidatesForFailover
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('buildRouterCandidates', () => {
+  // 📖 Minimal MODELS subset: [[modelId, label, tier, sweScore, ctx, providerKey], ...]
+  const testModels = [
+    ['a/model1', 'Model 1', 'S+', '75.0%', '128k', 'provA'],
+    ['a/model2', 'Model 2', 'A',  '45.0%', '64k',  'provA'],
+    ['b/model3', 'Model 3', 'B',  '25.0%', '32k',  'provB'],
+    ['c/model4', 'Model 4', 'S',  '65.0%', '128k', 'provC'],
+  ]
+
+  // 📖 Minimal config: all providers enabled by default
+  const allEnabled = { providers: {}, apiKeys: {} }
+  const provBDisabled = { providers: { provB: { enabled: false } }, apiKeys: {} }
+
+  it('returns all models when all providers enabled and no filter', () => {
+    const results = buildRouterCandidates(testModels, allEnabled, isProviderEnabled, {})
+    assert.equal(results.length, 4)
+  })
+
+  it('excludes models from disabled providers', () => {
+    const results = buildRouterCandidates(testModels, provBDisabled, isProviderEnabled, {})
+    assert.ok(!results.some(r => r.providerKey === 'provB'), 'provB should be excluded')
+    assert.equal(results.length, 3)
+  })
+
+  it('applies tier filter', () => {
+    const results = buildRouterCandidates(testModels, allEnabled, isProviderEnabled, { tierFilter: 'S' })
+    // S tier letter maps to S+ and S
+    assert.ok(results.every(r => ['S+', 'S'].includes(r.tier)))
+    assert.equal(results.length, 2)
+  })
+
+  it('applies bestMode filter', () => {
+    const results = buildRouterCandidates(testModels, allEnabled, isProviderEnabled, { bestMode: true })
+    assert.ok(results.every(r => BEST_TIERS.includes(r.tier)))
+    assert.ok(!results.some(r => r.tier === 'A'))
+    assert.ok(!results.some(r => r.tier === 'B'))
+  })
+
+  it('returns pending status objects', () => {
+    const results = buildRouterCandidates(testModels, allEnabled, isProviderEnabled, {})
+    for (const r of results) {
+      assert.equal(r.status, 'pending')
+      assert.deepEqual(r.pings, [])
+      assert.equal(r.httpCode, null)
+    }
+  })
+
+  it('assigns sequential idx starting at 1', () => {
+    const results = buildRouterCandidates(testModels, allEnabled, isProviderEnabled, {})
+    assert.equal(results[0].idx, 1)
+    assert.equal(results[results.length - 1].idx, results.length)
+  })
+
+  it('returns empty array if no models match filters', () => {
+    const results = buildRouterCandidates(testModels, allEnabled, isProviderEnabled, { tierFilter: 'C' })
+    assert.equal(results.length, 0)
+  })
+})
+
+describe('sortCandidatesForFailover', () => {
+  const mkCand = (overrides) => ({
+    idx: 1, modelId: 'a/b', label: 'X', tier: 'A', sweScore: '40%', ctx: '64k',
+    providerKey: 'p', status: 'pending', pings: [], httpCode: null,
+    ...overrides,
+  })
+
+  it('puts up models before non-up models', () => {
+    const candidates = [
+      mkCand({ modelId: 'down', status: 'down' }),
+      mkCand({ modelId: 'up', status: 'up', pings: [{ ms: 500, code: '200' }] }),
+    ]
+    const sorted = sortCandidatesForFailover(candidates)
+    assert.equal(sorted[0].modelId, 'up')
+  })
+
+  it('among up models, faster average wins', () => {
+    const candidates = [
+      mkCand({ modelId: 'slow', status: 'up', pings: [{ ms: 1000, code: '200' }] }),
+      mkCand({ modelId: 'fast', status: 'up', pings: [{ ms: 200, code: '200' }] }),
+    ]
+    const sorted = sortCandidatesForFailover(candidates)
+    assert.equal(sorted[0].modelId, 'fast')
+  })
+
+  it('among pending models (no pings), better tier wins', () => {
+    const candidates = [
+      mkCand({ modelId: 'b-tier', tier: 'B', status: 'pending' }),
+      mkCand({ modelId: 's-tier', tier: 'S+', status: 'pending' }),
+    ]
+    const sorted = sortCandidatesForFailover(candidates)
+    assert.equal(sorted[0].modelId, 's-tier')
+  })
+
+  it('does not mutate the original array', () => {
+    const candidates = [
+      mkCand({ modelId: 'a', status: 'down' }),
+      mkCand({ modelId: 'b', status: 'up', pings: [{ ms: 100, code: '200' }] }),
+    ]
+    const original = [...candidates]
+    sortCandidatesForFailover(candidates)
+    assert.equal(candidates[0].modelId, original[0].modelId)
   })
 })
 
