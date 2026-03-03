@@ -2,6 +2,36 @@
 
 ---
 
+## 0.1.83
+
+### Added
+
+- **Dynamic OpenRouter free model discovery** -- fetches live free models from OpenRouter API at startup; replaces static list with fresh data so new free models appear automatically without code updates. Falls back to cached static list with a yellow warning on network failure.
+- **`formatCtxWindow` and `labelFromId` utility functions** -- extracted to `lib/utils.js` for testability; used by dynamic OpenRouter discovery to convert API data to display format.
+- **16 new unit tests** -- covering `formatCtxWindow`, `labelFromId`, and MODELS array mutation logic (147 total tests across 23 suites).
+- **NVIDIA NIM auto-configuration** -- selecting a NIM model in OpenCode now auto-creates the nvidia provider block in `opencode.json` if missing, eliminating the manual install prompt.
+
+### Fixed
+
+- **Auto-update infinite loop** -- when running from source (dev mode with `.git` directory), auto-update is now skipped to prevent the restart loop where LOCAL_VERSION never changes.
+- **NVIDIA model double-prefix bug** -- model IDs in `sources.js` already include `nvidia/` prefix; `getOpenCodeModelId()` now strips it for nvidia provider (like it does for zai), preventing `nvidia/nvidia/...` in OpenCode config.
+
+### Removed
+
+- **`checkNvidiaNimConfig()` function** -- replaced by auto-create pattern; dead code removed.
+## 0.1.82
+
+### Fixed
+
+- **`openclaw.json` written only at startup** — clarified and enforced the design guarantee: `~/.openclaw/openclaw.json` is written exactly once when `--router --openclaw` starts. The background ping loop and per-request failover logic never touch the file. The startup log now explicitly says *(written once at startup)* and *"this file won't change again"*.
+
+### Changed
+
+- **Startup log** — `--router --openclaw` startup message updated to make it clear the config is a one-time write and that dynamic model selection is handled internally by the router.
+- **Tests** — added two new `buildOpenClawRouterConfig` purity/startup-only tests (157 total).
+
+---
+
 ## 0.1.81
 
 ### Added
