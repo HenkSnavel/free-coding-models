@@ -36,25 +36,19 @@
 
 ### Added
 
-- **`--router --openclaw` auto-configuration** — combining `--openclaw` with `--router` now automatically writes `~/.openclaw/openclaw.json` with the `fcm-router` provider pointing at the local gateway and the best available model set as default. Existing OpenClaw config is preserved; only the `fcm-router` provider block and `agents.defaults.model.primary` are updated. The startup log confirms what was written.
-- **README:** Added "Automatic" subsection to the Router → OpenClaw configuration section documenting the `--router --openclaw` shortcut.
+- **Dynamic OpenRouter free model discovery** -- fetches live free models from OpenRouter API at startup; replaces static list with fresh data so new free models appear automatically without code updates. Falls back to cached static list with a yellow warning on network failure.
+- **`formatCtxWindow` and `labelFromId` utility functions** -- extracted to `lib/utils.js` for testability; used by dynamic OpenRouter discovery to convert API data to display format.
+- **16 new unit tests** -- covering `formatCtxWindow`, `labelFromId`, and MODELS array mutation logic (147 total tests across 23 suites).
+- **NVIDIA NIM auto-configuration** -- selecting a NIM model in OpenCode now auto-creates the nvidia provider block in `opencode.json` if missing, eliminating the manual install prompt.
 
 ### Fixed
 
-- **`--port` with non-numeric value** — `parseInt('abc', 10)` previously stored `NaN` in the parsed args object; now normalised to `null`.
-- **Router: process crash on streaming error** — async handler had no top-level error fence; unhandled rejections crashed the process on Node 15+. Refactored to sync wrapper + `handleRequest()` with `.catch()` that writes a clean 500.
-- **Router: `res.headersSent` not guarded** — if `pump()` threw after `res.writeHead(200)` was already called, the failover loop tried `res.writeHead(503)` and threw "Cannot set headers after they are sent". Added `if (res.headersSent) break` and `if (!responded && !res.headersSent)` guards.
+- **Auto-update infinite loop** -- when running from source (dev mode with `.git` directory), auto-update is now skipped to prevent the restart loop where LOCAL_VERSION never changes.
+- **NVIDIA model double-prefix bug** -- model IDs in `sources.js` already include `nvidia/` prefix; `getOpenCodeModelId()` now strips it for nvidia provider (like it does for zai), preventing `nvidia/nvidia/...` in OpenCode config.
 
----
+### Removed
 
-## 0.1.81
-
-### Added
-
-- **`--router` mode** — start an OpenAI-compatible HTTP gateway server that selects the best available provider/model and supports automatic failover. Use `--port <n>` (or `$PORT`) to set the port (default 3000). Supports streaming (SSE proxy), tier filters (`--tier`, `--best`), config profiles (`--profile`), and provider enable/disable state from config.
-- **Endpoints:** `GET /health`, `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/completions`.
-- **OpenClaw gateway config:** Point OpenClaw at `http://localhost:3000` with `api: "openai-completions"` and `authHeader: false` — no API key needed on the client side.
-- **README:** Added "Router Mode" section with Quick Start, endpoint reference, OpenClaw configuration, and two-instance examples.
+- **`checkNvidiaNimConfig()` function** -- replaced by auto-create pattern; dead code removed.
 
 ---
 
