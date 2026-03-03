@@ -97,7 +97,7 @@ import { createServer as createHttpServer } from 'http'
 import { request as httpsRequest } from 'https'
 import { MODELS, sources } from '../sources.js'
 import { patchOpenClawModelsJson } from '../patch-openclaw-models.js'
-import { getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP, scoreModelForTask, getTopRecommendations, TASK_TYPES, PRIORITY_TYPES, CONTEXT_BUDGETS } from '../lib/utils.js'
+import { getAvg, getVerdict, getUptime, getP95, getJitter, getStabilityScore, sortResults, filterByTier, findBestModel, parseArgs, TIER_ORDER, VERDICT_ORDER, TIER_LETTER_MAP, scoreModelForTask, getTopRecommendations, TASK_TYPES, PRIORITY_TYPES, CONTEXT_BUDGETS, formatCtxWindow, labelFromId } from '../lib/utils.js'
 import { loadConfig, saveConfig, getApiKey, isProviderEnabled, saveAsProfile, loadProfile, listProfiles, deleteProfile, getActiveProfileName, setActiveProfile, _emptyProfileSettings } from '../lib/config.js'
 
 const require = createRequire(import.meta.url)
@@ -1386,7 +1386,10 @@ const OPENCODE_MODEL_MAP = {
 }
 
 function getOpenCodeModelId(providerKey, modelId) {
-  // 📖 ZAI models stored as "zai/glm-..." but OpenCode expects just "glm-..."
+  // 📖 Model IDs in sources.js include the provider prefix (e.g. "nvidia/llama-3.1-...")
+  // 📖 but OpenCode expects just the model part after provider/ since we build
+  // 📖 the full ref as `${providerKey}/${ocModelId}` in startOpenCode
+  if (providerKey === 'nvidia') return modelId.replace(/^nvidia\//, '')
   if (providerKey === 'zai') return modelId.replace(/^zai\//, '')
   return OPENCODE_MODEL_MAP[providerKey]?.[modelId] || modelId
 }
@@ -1624,22 +1627,6 @@ function saveOpenCodeConfig(config) {
   writeFileSync(configPath, JSON.stringify(config, null, 2))
 }
 
-// ─── Check NVIDIA NIM in OpenCode config ───────────────────────────────────────
-// 📖 Checks if NVIDIA NIM provider is configured in OpenCode config file
-// 📖 OpenCode uses 'provider' (singular) not 'providers' (plural)
-// 📖 Returns true if found, false otherwise
-function checkNvidiaNimConfig() {
-  const config = loadOpenCodeConfig()
-  if (!config.provider) return false
-  // 📖 Check for nvidia/nim provider by key name or display name (case-insensitive)
-  const providerKeys = Object.keys(config.provider)
-  return providerKeys.some(key =>
-    key === 'nvidia' || key === 'nim' ||
-    config.provider[key]?.name?.toLowerCase().includes('nvidia') ||
-    config.provider[key]?.name?.toLowerCase().includes('nim')
-  )
-}
-
 // ─── Shared OpenCode spawn helper ──────────────────────────────────────────────
 // 📖 Resolves the actual API key from config/env and passes it as an env var
 // 📖 to the child process so OpenCode's {env:GROQ_API_KEY} references work
@@ -1775,83 +1762,60 @@ async function startOpenCode(model, fcmConfig) {
 
   if (providerKey === 'nvidia') {
     // 📖 NVIDIA NIM needs a custom provider block in OpenCode config (not built-in)
-    const hasNim = checkNvidiaNimConfig()
+    // 📖 Auto-create it if missing — same pattern as all other providers
+    const config = loadOpenCodeConfig()
+    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
 
-    if (hasNim) {
-      console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
-      console.log(chalk.dim(`  Model: ${modelRef}`))
-      console.log()
+    if (existsSync(getOpenCodeConfigPath())) {
+      copyFileSync(getOpenCodeConfigPath(), backupPath)
+      console.log(chalk.dim(`  Backup: ${backupPath}`))
+    }
 
-      const config = loadOpenCodeConfig()
-      const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
-
-      if (existsSync(getOpenCodeConfigPath())) {
-        copyFileSync(getOpenCodeConfigPath(), backupPath)
-        console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+    // 📖 Ensure nvidia provider block exists — auto-create if missing
+    if (!config.provider) config.provider = {}
+    if (!config.provider.nvidia) {
+      config.provider.nvidia = {
+        npm: '@ai-sdk/openai-compatible',
+        name: 'NVIDIA NIM',
+        options: {
+          baseURL: 'https://integrate.api.nvidia.com/v1',
+          apiKey: '{env:NVIDIA_API_KEY}'
+        },
+        models: {}
       }
+      console.log(chalk.green('  + Auto-configured NVIDIA NIM provider in OpenCode'))
+    }
 
-      config.model = modelRef
+    console.log(chalk.green(`  Setting ${chalk.bold(model.label)} as default...`))
+    console.log(chalk.dim(`  Model: ${modelRef}`))
+    console.log()
 
-      // 📖 Register the model in the nvidia provider's models section
-      if (config.provider?.nvidia) {
-        if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
-        config.provider.nvidia.models[ocModelId] = { name: model.label }
-      }
+    config.model = modelRef
 
-      saveOpenCodeConfig(config)
+    // 📖 Register the model in the nvidia provider's models section
+    if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
+    config.provider.nvidia.models[ocModelId] = { name: model.label }
 
-      const savedConfig = loadOpenCodeConfig()
-      console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-      console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
-      console.log()
+    saveOpenCodeConfig(config)
 
-      if (savedConfig.model === config.model) {
-        console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
-      } else {
-        console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
-      }
-      console.log()
-      console.log(chalk.dim('  Starting OpenCode…'))
-      console.log()
+    const savedConfig = loadOpenCodeConfig()
+    console.log(chalk.dim(`  Config saved to: ${getOpenCodeConfigPath()}`))
+    console.log(chalk.dim(`  Default model in config: ${savedConfig.model || 'NOT SET'}`))
+    console.log()
 
-      await spawnOpenCode(['--model', modelRef], providerKey, fcmConfig)
+    if (savedConfig.model === config.model) {
+      console.log(chalk.green(`  Default model set to: ${modelRef}`))
     } else {
-      // 📖 NVIDIA NIM not configured -- show install prompt
-      console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
-      console.log()
-      console.log(chalk.dim('  Starting OpenCode with installation prompt…'))
-      console.log()
-
-      const configPath = getOpenCodeConfigPath()
-      const installPrompt = `Please install NVIDIA NIM provider in OpenCode by adding this to ${configPath}:
-
-{
-  "provider": {
-    "nvidia": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "NVIDIA NIM",
-      "options": {
-        "baseURL": "https://integrate.api.nvidia.com/v1",
-        "apiKey": "{env:NVIDIA_API_KEY}"
-      }
+      console.log(chalk.yellow(`  Config might not have been saved correctly`))
     }
-  }
-}
+    console.log()
+    console.log(chalk.dim('  Starting OpenCode...'))
+    console.log()
 
-${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_key_here'}
-
-After installation, you can use: opencode --model ${modelRef}`
-
-      console.log(chalk.cyan(installPrompt))
-      console.log()
-      console.log(chalk.dim('  Starting OpenCode…'))
-      console.log()
-
-      await spawnOpenCode([], providerKey, fcmConfig)
-    }
+    await spawnOpenCode(['--model', modelRef], providerKey, fcmConfig)
   } else {
     if (providerKey === 'replicate') {
-      console.log(chalk.yellow('  ⚠ Replicate models are monitor-only for now in OpenCode mode.'))
+      console.log(chalk.yellow('  Replicate models are monitor-only for now in OpenCode mode.'))
       console.log(chalk.dim('    Reason: Replicate uses /v1/predictions instead of OpenAI chat-completions.'))
       console.log(chalk.dim('    You can still benchmark this model in the TUI and use other providers for OpenCode launch.'))
       console.log()
@@ -1865,16 +1829,16 @@ After installation, you can use: opencode --model ${modelRef}`
     if (providerKey === 'zai') {
       const resolvedKey = getApiKey(fcmConfig, providerKey)
       if (!resolvedKey) {
-        console.log(chalk.yellow('  ⚠ ZAI API key not found. Set ZAI_API_KEY environment variable.'))
+        console.log(chalk.yellow('  ZAI API key not found. Set ZAI_API_KEY environment variable.'))
         console.log()
         return
       }
 
       // 📖 Start proxy FIRST to get the port for config
       const { server: zaiProxyServer, port: zaiProxyPort } = await createZaiProxy(resolvedKey)
-      console.log(chalk.dim(`  🔀 ZAI proxy listening on port ${zaiProxyPort} (rewrites /v1/* → ZAI API)`))
+      console.log(chalk.dim(`  ZAI proxy listening on port ${zaiProxyPort} (rewrites /v1/* -> ZAI API)`))
 
-      console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
+      console.log(chalk.green(`  Setting ${chalk.bold(model.label)} as default...`))
       console.log(chalk.dim(`  Model: ${modelRef}`))
       console.log()
 
@@ -1883,7 +1847,7 @@ After installation, you can use: opencode --model ${modelRef}`
 
       if (existsSync(getOpenCodeConfigPath())) {
         copyFileSync(getOpenCodeConfigPath(), backupPath)
-        console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+        console.log(chalk.dim(`  Backup: ${backupPath}`))
       }
 
       // 📖 Register ZAI as an openai-compatible provider pointing to our localhost proxy
@@ -1904,17 +1868,17 @@ After installation, you can use: opencode --model ${modelRef}`
       saveOpenCodeConfig(config)
 
       const savedConfig = loadOpenCodeConfig()
-      console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-      console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+      console.log(chalk.dim(`  Config saved to: ${getOpenCodeConfigPath()}`))
+      console.log(chalk.dim(`  Default model in config: ${savedConfig.model || 'NOT SET'}`))
       console.log()
 
       if (savedConfig.model === config.model) {
-        console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+        console.log(chalk.green(`  Default model set to: ${modelRef}`))
       } else {
-        console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+        console.log(chalk.yellow(`  Config might not have been saved correctly`))
       }
       console.log()
-      console.log(chalk.dim('  Starting OpenCode…'))
+      console.log(chalk.dim('  Starting OpenCode...'))
       console.log()
 
       // 📖 Pass existing proxy to spawnOpenCode so it doesn't start a second one
@@ -1925,7 +1889,7 @@ After installation, you can use: opencode --model ${modelRef}`
     // 📖 Groq: built-in OpenCode provider — needs provider block with apiKey in opencode.json.
     // 📖 Cerebras: NOT built-in — needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
     // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
-    console.log(chalk.green(`  🚀 Setting ${chalk.bold(model.label)} as default…`))
+    console.log(chalk.green(`  Setting ${chalk.bold(model.label)} as default...`))
     console.log(chalk.dim(`  Model: ${modelRef}`))
     console.log()
 
@@ -1934,7 +1898,7 @@ After installation, you can use: opencode --model ${modelRef}`
 
     if (existsSync(getOpenCodeConfigPath())) {
       copyFileSync(getOpenCodeConfigPath(), backupPath)
-      console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+      console.log(chalk.dim(`  Backup: ${backupPath}`))
     }
 
     // 📖 Ensure the provider block exists in config — create it if missing
@@ -2071,7 +2035,7 @@ After installation, you can use: opencode --model ${modelRef}`
       } else if (providerKey === 'cloudflare') {
         const cloudflareAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
         if (!cloudflareAccountId) {
-          console.log(chalk.yellow('  ⚠ Cloudflare Workers AI requires CLOUDFLARE_ACCOUNT_ID for OpenCode integration.'))
+          console.log(chalk.yellow('  Cloudflare Workers AI requires CLOUDFLARE_ACCOUNT_ID for OpenCode integration.'))
           console.log(chalk.dim('    Export CLOUDFLARE_ACCOUNT_ID and retry this selection.'))
           console.log()
           return
@@ -2120,17 +2084,17 @@ After installation, you can use: opencode --model ${modelRef}`
     saveOpenCodeConfig(config)
 
     const savedConfig = loadOpenCodeConfig()
-    console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-    console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+    console.log(chalk.dim(`  Config saved to: ${getOpenCodeConfigPath()}`))
+    console.log(chalk.dim(`  Default model in config: ${savedConfig.model || 'NOT SET'}`))
     console.log()
 
     if (savedConfig.model === config.model) {
-      console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+      console.log(chalk.green(`  Default model set to: ${modelRef}`))
     } else {
-      console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+      console.log(chalk.yellow(`  Config might not have been saved correctly`))
     }
     console.log()
-    console.log(chalk.dim('  Starting OpenCode…'))
+    console.log(chalk.dim('  Starting OpenCode...'))
     console.log()
 
     await spawnOpenCode(['--model', modelRef], providerKey, fcmConfig)
@@ -2161,7 +2125,7 @@ async function startOpenCodeDesktop(model, fcmConfig) {
     }
     exec(command, (err) => {
       if (err) {
-        console.error(chalk.red('  ✗ Could not open OpenCode Desktop'))
+        console.error(chalk.red('  Could not open OpenCode Desktop'))
         if (isWindows) {
           console.error(chalk.dim('    Make sure OpenCode is installed from https://opencode.ai'))
         } else if (isLinux) {
@@ -2176,73 +2140,60 @@ async function startOpenCodeDesktop(model, fcmConfig) {
 
   if (providerKey === 'nvidia') {
     // 📖 NVIDIA NIM needs a custom provider block in OpenCode config (not built-in)
-    const hasNim = checkNvidiaNimConfig()
+    // 📖 Auto-create it if missing — same pattern as all other providers
+    const config = loadOpenCodeConfig()
+    const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
 
-    if (hasNim) {
-      console.log(chalk.green(`  🖥 Setting ${chalk.bold(model.label)} as default for OpenCode Desktop…`))
-      console.log(chalk.dim(`  Model: ${modelRef}`))
-      console.log()
+    if (existsSync(getOpenCodeConfigPath())) {
+      copyFileSync(getOpenCodeConfigPath(), backupPath)
+      console.log(chalk.dim(`  Backup: ${backupPath}`))
+    }
 
-      const config = loadOpenCodeConfig()
-      const backupPath = `${getOpenCodeConfigPath()}.backup-${Date.now()}`
-
-      if (existsSync(getOpenCodeConfigPath())) {
-        copyFileSync(getOpenCodeConfigPath(), backupPath)
-        console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+    // 📖 Ensure nvidia provider block exists — auto-create if missing
+    if (!config.provider) config.provider = {}
+    if (!config.provider.nvidia) {
+      config.provider.nvidia = {
+        npm: '@ai-sdk/openai-compatible',
+        name: 'NVIDIA NIM',
+        options: {
+          baseURL: 'https://integrate.api.nvidia.com/v1',
+          apiKey: '{env:NVIDIA_API_KEY}'
+        },
+        models: {}
       }
+      console.log(chalk.green('  + Auto-configured NVIDIA NIM provider in OpenCode'))
+    }
 
-      config.model = modelRef
+    console.log(chalk.green(`  Setting ${chalk.bold(model.label)} as default for OpenCode Desktop...`))
+    console.log(chalk.dim(`  Model: ${modelRef}`))
+    console.log()
 
-      if (config.provider?.nvidia) {
-        if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
-        config.provider.nvidia.models[ocModelId] = { name: model.label }
-      }
+    config.model = modelRef
 
-      saveOpenCodeConfig(config)
+    // 📖 Register the model in the nvidia provider's models section
+    if (!config.provider.nvidia.models) config.provider.nvidia.models = {}
+    config.provider.nvidia.models[ocModelId] = { name: model.label }
 
-      const savedConfig = loadOpenCodeConfig()
-      console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-      console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
-      console.log()
+    saveOpenCodeConfig(config)
 
-      if (savedConfig.model === config.model) {
-        console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
-      } else {
-        console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
-      }
-      console.log()
-      console.log(chalk.dim('  Opening OpenCode Desktop…'))
-      console.log()
+    const savedConfig = loadOpenCodeConfig()
+    console.log(chalk.dim(`  Config saved to: ${getOpenCodeConfigPath()}`))
+    console.log(chalk.dim(`  Default model in config: ${savedConfig.model || 'NOT SET'}`))
+    console.log()
 
-      await launchDesktop()
+    if (savedConfig.model === config.model) {
+      console.log(chalk.green(`  Default model set to: ${modelRef}`))
     } else {
-      console.log(chalk.yellow('  ⚠ NVIDIA NIM not configured in OpenCode'))
-      console.log(chalk.dim('  Please configure it first. Config is shared between CLI and Desktop.'))
-      console.log()
-
-      const configPath = getOpenCodeConfigPath()
-      const installPrompt = `Add this to ${configPath}:
-
-{
-  "provider": {
-    "nvidia": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "NVIDIA NIM",
-      "options": {
-        "baseURL": "https://integrate.api.nvidia.com/v1",
-        "apiKey": "{env:NVIDIA_API_KEY}"
-      }
+      console.log(chalk.yellow(`  Config might not have been saved correctly`))
     }
-  }
-}
+    console.log()
+    console.log(chalk.dim('  Opening OpenCode Desktop...'))
+    console.log()
 
-${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_key_here'}`
-      console.log(chalk.cyan(installPrompt))
-      console.log()
-    }
+    await launchDesktop()
   } else {
     if (providerKey === 'replicate') {
-      console.log(chalk.yellow('  ⚠ Replicate models are monitor-only for now in OpenCode Desktop mode.'))
+      console.log(chalk.yellow('  Replicate models are monitor-only for now in OpenCode Desktop mode.'))
       console.log(chalk.dim('    Reason: Replicate uses /v1/predictions instead of OpenAI chat-completions.'))
       console.log(chalk.dim('    You can still benchmark this model in the TUI and use other providers for Desktop launch.'))
       console.log()
@@ -2252,7 +2203,7 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
     // 📖 ZAI: Desktop mode can't use the localhost proxy (Desktop is a standalone app).
     // 📖 Direct the user to use OpenCode CLI mode instead, which supports ZAI via proxy.
     if (providerKey === 'zai') {
-      console.log(chalk.yellow('  ⚠ ZAI models are supported in OpenCode CLI mode only (not Desktop).'))
+      console.log(chalk.yellow('  ZAI models are supported in OpenCode CLI mode only (not Desktop).'))
       console.log(chalk.dim('    Reason: ZAI requires a localhost proxy that only works with the CLI spawn.'))
       console.log(chalk.dim('    Use OpenCode CLI mode (default) to launch ZAI models.'))
       console.log()
@@ -2262,7 +2213,7 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
     // 📖 Groq: built-in OpenCode provider — needs provider block with apiKey in opencode.json.
     // 📖 Cerebras: NOT built-in — needs @ai-sdk/openai-compatible + baseURL, like NVIDIA.
     // 📖 Both need the model registered in provider.<key>.models so OpenCode can find it.
-    console.log(chalk.green(`  🖥 Setting ${chalk.bold(model.label)} as default for OpenCode Desktop…`))
+    console.log(chalk.green(`  Setting ${chalk.bold(model.label)} as default for OpenCode Desktop...`))
     console.log(chalk.dim(`  Model: ${modelRef}`))
     console.log()
 
@@ -2271,7 +2222,7 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
 
     if (existsSync(getOpenCodeConfigPath())) {
       copyFileSync(getOpenCodeConfigPath(), backupPath)
-      console.log(chalk.dim(`  💾 Backup: ${backupPath}`))
+      console.log(chalk.dim(`  Backup: ${backupPath}`))
     }
 
     // 📖 Ensure the provider block exists in config — create it if missing
@@ -2398,17 +2349,17 @@ ${isWindows ? 'set NVIDIA_API_KEY=your_key_here' : 'export NVIDIA_API_KEY=your_k
     saveOpenCodeConfig(config)
 
     const savedConfig = loadOpenCodeConfig()
-    console.log(chalk.dim(`  📝 Config saved to: ${getOpenCodeConfigPath()}`))
-    console.log(chalk.dim(`  📝 Default model in config: ${savedConfig.model || 'NOT SET'}`))
+    console.log(chalk.dim(`  Config saved to: ${getOpenCodeConfigPath()}`))
+    console.log(chalk.dim(`  Default model in config: ${savedConfig.model || 'NOT SET'}`))
     console.log()
 
     if (savedConfig.model === config.model) {
-      console.log(chalk.green(`  ✓ Default model set to: ${modelRef}`))
+      console.log(chalk.green(`  Default model set to: ${modelRef}`))
     } else {
-      console.log(chalk.yellow(`  ⚠ Config might not have been saved correctly`))
+      console.log(chalk.yellow(`  Config might not have been saved correctly`))
     }
     console.log()
-    console.log(chalk.dim('  Opening OpenCode Desktop…'))
+    console.log(chalk.dim('  Opening OpenCode Desktop...'))
     console.log()
 
     await launchDesktop()
@@ -2607,6 +2558,76 @@ function filterByTierOrExit(results, tierLetter) {
   return filtered
 }
 
+// ─── Dynamic OpenRouter free model discovery ──────────────────────────────────
+// 📖 Fetches the live list of free models from OpenRouter's public API at startup.
+// 📖 Replaces the static openrouter entries in MODELS with fresh data so new free
+// 📖 models appear automatically without a code update.
+// 📖 Falls back silently to the static list on network failure.
+
+// 📖 Known SWE-bench scores for OpenRouter free models.
+// 📖 Keyed by base model ID (without the :free suffix).
+// 📖 Unknown models default to tier 'B' / '25.0%'.
+const OPENROUTER_TIER_MAP = {
+  'qwen/qwen3-coder':                         ['S+', '70.6%'],
+  'mistralai/devstral-2':                      ['S+', '72.2%'],
+  'stepfun/step-3.5-flash':                    ['S+', '74.4%'],
+  'deepseek/deepseek-r1-0528':                 ['S',  '61.0%'],
+  'qwen/qwen3-next-80b-a3b-instruct':          ['S',  '65.0%'],
+  'openai/gpt-oss-120b':                       ['S',  '60.0%'],
+  'openai/gpt-oss-20b':                        ['A',  '42.0%'],
+  'nvidia/nemotron-3-nano-30b-a3b':            ['A',  '43.0%'],
+  'meta-llama/llama-3.3-70b-instruct':         ['A-', '39.5%'],
+  'mimo-v2-flash':                             ['A',  '45.0%'],
+  'google/gemma-3-27b-it':                     ['A-', '36.0%'],
+  'google/gemma-3-12b-it':                     ['B+', '30.0%'],
+  'google/gemma-3-4b-it':                      ['B',  '22.0%'],
+  'google/gemma-3n-e4b-it':                    ['B',  '22.0%'],
+  'google/gemma-3n-e2b-it':                    ['B',  '18.0%'],
+  'meta-llama/llama-3.2-3b-instruct':          ['B',  '20.0%'],
+  'mistralai/mistral-small-3.1-24b-instruct':  ['A-', '35.0%'],
+  'qwen/qwen3-4b':                             ['B',  '22.0%'],
+  'nousresearch/hermes-3-llama-3.1-405b':      ['A',  '40.0%'],
+  'nvidia/nemotron-nano-9b-v2':                ['B+', '28.0%'],
+  'nvidia/nemotron-nano-12b-v2-vl':            ['B+', '30.0%'],
+  'z-ai/glm-4.5-air':                          ['A-', '38.0%'],
+  'arcee-ai/trinity-large-preview':             ['A',  '40.0%'],
+  'arcee-ai/trinity-mini':                      ['B+', '28.0%'],
+  'upstage/solar-pro-3':                       ['A-', '35.0%'],
+  'cognitivecomputations/dolphin-mistral-24b-venice-edition': ['B+', '28.0%'],
+  'liquid/lfm-2.5-1.2b-thinking':              ['B',  '18.0%'],
+  'liquid/lfm-2.5-1.2b-instruct':              ['B',  '18.0%'],
+}
+
+async function fetchOpenRouterFreeModels() {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+    const res = await fetch('https://openrouter.ai/api/v1/models', {
+      signal: controller.signal,
+      headers: {
+        'HTTP-Referer': 'https://github.com/vava-nessa/free-coding-models',
+        'X-Title': 'free-coding-models',
+      },
+    })
+    clearTimeout(timeout)
+    if (!res.ok) return null
+    const json = await res.json()
+    if (!json.data || !Array.isArray(json.data)) return null
+
+    const freeModels = json.data.filter(m => m.id && m.id.endsWith(':free'))
+
+    return freeModels.map(m => {
+      const baseId = m.id.replace(/:free$/, '')
+      const [tier, swe] = OPENROUTER_TIER_MAP[baseId] || ['B', '25.0%']
+      const ctx = formatCtxWindow(m.context_length)
+      const label = labelFromId(m.id)
+      return [m.id, label, tier, swe, ctx]
+    })
+  } catch {
+    return null
+  }
+}
+
 async function main() {
   const cliArgs = parseArgs(process.argv)
 
@@ -2680,7 +2701,11 @@ async function main() {
   }
 
   // 📖 Auto-update system: force updates and handle changelog automatically
-  if (latestVersion) {
+  // 📖 Skip when running from source (dev mode) — .git means we're in a repo checkout,
+  // 📖 not a global npm install. Auto-update would overwrite the global copy but restart
+  // 📖 the local one, causing an infinite update loop since LOCAL_VERSION never changes.
+  const isDevMode = existsSync(join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')), '..', '.git'))
+  if (latestVersion && !isDevMode) {
     console.log()
     console.log(chalk.bold.red('  ⚠ AUTO-UPDATE AVAILABLE'))
     console.log(chalk.red(`  Version ${latestVersion} will be installed automatically`))
@@ -2708,6 +2733,23 @@ async function main() {
     console.log(chalk.cyan('  🚀 Starting auto-update...'))
     runUpdate(latestVersion)
     return // runUpdate will restart the process
+  }
+
+  // 📖 Dynamic OpenRouter free model discovery — fetch live free models from API
+  // 📖 Replaces static openrouter entries in MODELS with fresh data.
+  // 📖 Fallback: if fetch fails, the static list from sources.js stays intact + warning shown.
+  const dynamicModels = await fetchOpenRouterFreeModels()
+  if (dynamicModels) {
+    // 📖 Remove all existing openrouter entries from MODELS
+    for (let i = MODELS.length - 1; i >= 0; i--) {
+      if (MODELS[i][5] === 'openrouter') MODELS.splice(i, 1)
+    }
+    // 📖 Push fresh entries with 'openrouter' providerKey
+    for (const [modelId, label, tier, swe, ctx] of dynamicModels) {
+      MODELS.push([modelId, label, tier, swe, ctx, 'openrouter'])
+    }
+  } else {
+    console.log(chalk.yellow('  OpenRouter: using cached model list (live fetch failed)'))
   }
 
   // 📖 Build results from MODELS — only include enabled providers
