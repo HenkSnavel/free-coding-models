@@ -37,6 +37,7 @@ import {
   _emptyProfileSettings, saveAsProfile, loadProfile, listProfiles,
   deleteProfile, getActiveProfileName, setActiveProfile, isProviderEnabled
 } from '../lib/config.js'
+import { buildOpenClawRouterConfig, OPENCLAW_ROUTER_PROVIDER } from '../lib/router/index.js'
 
 // ─── Helper: create a mock model result ──────────────────────────────────────
 // 📖 Builds a minimal result object matching the shape used by the main script
@@ -810,6 +811,53 @@ describe('sortCandidatesForFailover', () => {
     const original = [...candidates]
     sortCandidatesForFailover(candidates)
     assert.equal(candidates[0].modelId, original[0].modelId)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📖 3c. ROUTER — buildOpenClawRouterConfig
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('buildOpenClawRouterConfig', () => {
+  it('sets models.providers[fcm-router] with correct baseUrl and api', () => {
+    const result = buildOpenClawRouterConfig({}, 3000, 'deepseek-ai/deepseek-v3.2')
+    assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].baseUrl, 'http://localhost:3000')
+    assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].api, 'openai-completions')
+    assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].authHeader, false)
+  })
+
+  it('sets agents.defaults.model.primary to fcm-router/<modelId>', () => {
+    const result = buildOpenClawRouterConfig({}, 3000, 'nvidia/llama-3.1-70b-instruct')
+    assert.equal(result.agents.defaults.model.primary, `${OPENCLAW_ROUTER_PROVIDER}/nvidia/llama-3.1-70b-instruct`)
+  })
+
+  it('adds model to agents.defaults.models allowlist', () => {
+    const result = buildOpenClawRouterConfig({}, 3000, 'my/model')
+    const key = `${OPENCLAW_ROUTER_PROVIDER}/my/model`
+    assert.ok(Object.prototype.hasOwnProperty.call(result.agents.defaults.models, key))
+  })
+
+  it('preserves existing config fields', () => {
+    const existing = { env: { NVIDIA_API_KEY: 'nvapi-xxx' }, agents: { defaults: { someOtherKey: 42 } } }
+    const result = buildOpenClawRouterConfig(existing, 3000, 'a/b')
+    assert.equal(result.env.NVIDIA_API_KEY, 'nvapi-xxx')
+    assert.equal(result.agents.defaults.someOtherKey, 42)
+  })
+
+  it('does not mutate the input config', () => {
+    const existing = { env: { KEY: 'val' } }
+    buildOpenClawRouterConfig(existing, 3000, 'a/b')
+    assert.ok(!existing.models, 'should not have mutated input')
+  })
+
+  it('overwrites an existing fcm-router provider block', () => {
+    const existing = { models: { providers: { [OPENCLAW_ROUTER_PROVIDER]: { baseUrl: 'http://localhost:9999', api: 'old' } } } }
+    const result = buildOpenClawRouterConfig(existing, 4000, 'x/y')
+    assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].baseUrl, 'http://localhost:4000')
+  })
+
+  it('reflects port in baseUrl', () => {
+    const result = buildOpenClawRouterConfig({}, 8080, 'a/b')
+    assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].baseUrl, 'http://localhost:8080')
   })
 })
 

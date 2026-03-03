@@ -740,6 +740,10 @@ free-coding-models --router --best
 
 # Use a saved config profile
 free-coding-models --router --profile work
+
+# Auto-configure OpenClaw and start the router in one command
+free-coding-models --router --openclaw
+free-coding-models --router --port 3000 --openclaw --best
 ```
 
 ### Endpoints
@@ -760,6 +764,28 @@ On each request the router:
 4. Returns `503` only if all candidates fail
 
 ### OpenClaw configuration
+
+#### Automatic (recommended)
+
+Add `--openclaw` to automatically write `~/.openclaw/openclaw.json` with the `fcm-router` provider and the best available model as default:
+
+```bash
+free-coding-models --router --openclaw
+free-coding-models --router --port 3000 --openclaw --best
+```
+
+The startup output confirms what was written:
+
+```
+  🦞 OpenClaw auto-configured!
+     Provider: "fcm-router" → http://localhost:3000
+     Default model: fcm-router/deepseek-ai/deepseek-v3.2
+     Config: ~/.openclaw/openclaw.json
+```
+
+Your existing OpenClaw config is preserved — only the `fcm-router` provider block and `agents.defaults.model.primary` are updated.
+
+#### Manual
 
 Point OpenClaw at the router instead of a specific provider. No API key required on the client side. The provider name (e.g. `fcm-router`) is an arbitrary label you choose — it appears as a prefix in model IDs within OpenClaw:
 

@@ -2,6 +2,21 @@
 
 ---
 
+## 0.1.82
+
+### Added
+
+- **`--router --openclaw` auto-configuration** — combining `--openclaw` with `--router` now automatically writes `~/.openclaw/openclaw.json` with the `fcm-router` provider pointing at the local gateway and the best available model set as default. Existing OpenClaw config is preserved; only the `fcm-router` provider block and `agents.defaults.model.primary` are updated. The startup log confirms what was written.
+- **README:** Added "Automatic" subsection to the Router → OpenClaw configuration section documenting the `--router --openclaw` shortcut.
+
+### Fixed
+
+- **`--port` with non-numeric value** — `parseInt('abc', 10)` previously stored `NaN` in the parsed args object; now normalised to `null`.
+- **Router: process crash on streaming error** — async handler had no top-level error fence; unhandled rejections crashed the process on Node 15+. Refactored to sync wrapper + `handleRequest()` with `.catch()` that writes a clean 500.
+- **Router: `res.headersSent` not guarded** — if `pump()` threw after `res.writeHead(200)` was already called, the failover loop tried `res.writeHead(503)` and threw "Cannot set headers after they are sent". Added `if (res.headersSent) break` and `if (!responded && !res.headersSent)` guards.
+
+---
+
 ## 0.1.81
 
 ### Added
