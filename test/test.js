@@ -824,6 +824,7 @@ describe('buildOpenClawRouterConfig', () => {
     assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].baseUrl, 'http://localhost:3000')
     assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].api, 'openai-completions')
     assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].authHeader, false)
+    assert.ok(Array.isArray(result.models.providers[OPENCLAW_ROUTER_PROVIDER].models), 'models must be an array (required by OpenClaw schema)')
   })
 
   it('sets agents.defaults.model.primary to fcm-router/<modelId>', () => {
