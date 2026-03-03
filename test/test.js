@@ -859,6 +859,28 @@ describe('buildOpenClawRouterConfig', () => {
     const result = buildOpenClawRouterConfig({}, 8080, 'a/b')
     assert.equal(result.models.providers[OPENCLAW_ROUTER_PROVIDER].baseUrl, 'http://localhost:8080')
   })
+
+  // 📖 Startup-only guarantee: calling with a different model (simulating a model switch)
+  // 📖 produces a new config object — it does NOT mutate shared state, so only the
+  // 📖 value returned by the FIRST call (at startup) should ever be written to disk.
+  it('calling again with a different model returns a fresh independent result', () => {
+    const startupConfig = buildOpenClawRouterConfig({}, 3000, 'initial/model')
+    const afterSwitchConfig = buildOpenClawRouterConfig({}, 3000, 'switched/model')
+    // Each call is independent — no shared state
+    assert.equal(startupConfig.agents.defaults.model.primary, `${OPENCLAW_ROUTER_PROVIDER}/initial/model`)
+    assert.equal(afterSwitchConfig.agents.defaults.model.primary, `${OPENCLAW_ROUTER_PROVIDER}/switched/model`)
+    // The startup result is unchanged by the second call
+    assert.equal(startupConfig.agents.defaults.model.primary, `${OPENCLAW_ROUTER_PROVIDER}/initial/model`)
+  })
+
+  it('does not contain any persistent state between calls (pure function)', () => {
+    const first  = buildOpenClawRouterConfig({}, 3000, 'a/first')
+    const second = buildOpenClawRouterConfig({}, 3000, 'b/second')
+    const third  = buildOpenClawRouterConfig({}, 3000, 'c/third')
+    assert.equal(first.agents.defaults.model.primary,  `${OPENCLAW_ROUTER_PROVIDER}/a/first`)
+    assert.equal(second.agents.defaults.model.primary, `${OPENCLAW_ROUTER_PROVIDER}/b/second`)
+    assert.equal(third.agents.defaults.model.primary,  `${OPENCLAW_ROUTER_PROVIDER}/c/third`)
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════

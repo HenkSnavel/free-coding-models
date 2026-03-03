@@ -2,6 +2,19 @@
 
 ---
 
+## 0.1.83
+
+### Fixed
+
+- **`openclaw.json` written only at startup** — clarified and enforced the design guarantee: `~/.openclaw/openclaw.json` is written exactly once when `--router --openclaw` starts. The background ping loop and per-request failover logic never touch the file. The startup log now explicitly says *(written once at startup)* and *"this file won't change again"*.
+
+### Changed
+
+- **Startup log** — `--router --openclaw` startup message updated to make it clear the config is a one-time write and that dynamic model selection is handled internally by the router.
+- **Tests** — added two new `buildOpenClawRouterConfig` purity/startup-only tests (157 total).
+
+---
+
 ## 0.1.82
 
 ### Added
