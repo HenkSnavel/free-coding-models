@@ -457,7 +457,7 @@ async function checkForUpdate() {
 }
 
 function runUpdate(latestVersion) {
-  const { execSync } = require('child_process')
+  const { execSync, spawnSync } = require('child_process')
   console.log()
   console.log(chalk.bold.cyan('  ⬆ Updating free-coding-models to v' + latestVersion + '...'))
   console.log()
@@ -473,8 +473,9 @@ function runUpdate(latestVersion) {
     console.log()
     
     // 📖 Relaunch automatically with the same arguments
+    // 📖 Use process.execPath + process.argv[1] (absolute paths) so this works regardless of CWD
     const args = process.argv.slice(2)
-    execSync(`node bin/free-coding-models.js ${args.join(' ')}`, { stdio: 'inherit' })
+    spawnSync(process.execPath, [process.argv[1], ...args], { stdio: 'inherit' })
     process.exit(0)
   } catch (err) {
     console.log()
@@ -496,8 +497,9 @@ function runUpdate(latestVersion) {
         console.log()
         
         // 📖 Relaunch automatically with the same arguments
+        // 📖 Use process.execPath + process.argv[1] (absolute paths) so this works regardless of CWD
         const args = process.argv.slice(2)
-        execSync(`node bin/free-coding-models.js ${args.join(' ')}`, { stdio: 'inherit' })
+        spawnSync(process.execPath, [process.argv[1], ...args], { stdio: 'inherit' })
         process.exit(0)
       } catch (sudoErr) {
         console.log()

@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.85
+
+### Fixed
+
+- **Auto-update restart crash** — replaced `node bin/free-coding-models.js` (relative path) with `process.execPath` + `process.argv[1]` via `spawnSync` so the restart after update works regardless of current working directory.
+
+---
+
 ## 0.1.84
 
 ### Fixed
