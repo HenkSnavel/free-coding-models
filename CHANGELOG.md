@@ -2,6 +2,14 @@
 
 ---
 
+## 0.1.84
+
+### Fixed
+
+- **`--openclaw --best --router` crash** — added required `models: []` array to `fcm-router` provider block in the generated OpenClaw config; OpenClaw's schema validation now passes.
+
+---
+
 ## 0.1.83
 
 ### Added
