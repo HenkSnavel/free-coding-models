@@ -2,7 +2,7 @@
 
 ---
 
-## 0.1.81
+## 0.1.83
 
 ### Added
 
@@ -19,6 +19,42 @@
 ### Removed
 
 - **`checkNvidiaNimConfig()` function** -- replaced by auto-create pattern; dead code removed.
+## 0.1.82
+
+### Fixed
+
+- **`openclaw.json` written only at startup** — clarified and enforced the design guarantee: `~/.openclaw/openclaw.json` is written exactly once when `--router --openclaw` starts. The background ping loop and per-request failover logic never touch the file. The startup log now explicitly says *(written once at startup)* and *"this file won't change again"*.
+
+### Changed
+
+- **Startup log** — `--router --openclaw` startup message updated to make it clear the config is a one-time write and that dynamic model selection is handled internally by the router.
+- **Tests** — added two new `buildOpenClawRouterConfig` purity/startup-only tests (157 total).
+
+---
+
+## 0.1.81
+
+### Added
+
+- **`--router --openclaw` auto-configuration** — combining `--openclaw` with `--router` now automatically writes `~/.openclaw/openclaw.json` with the `fcm-router` provider pointing at the local gateway and the best available model set as default. Existing OpenClaw config is preserved; only the `fcm-router` provider block and `agents.defaults.model.primary` are updated. The startup log confirms what was written.
+- **README:** Added "Automatic" subsection to the Router → OpenClaw configuration section documenting the `--router --openclaw` shortcut.
+
+### Fixed
+
+- **`--port` with non-numeric value** — `parseInt('abc', 10)` previously stored `NaN` in the parsed args object; now normalised to `null`.
+- **Router: process crash on streaming error** — async handler had no top-level error fence; unhandled rejections crashed the process on Node 15+. Refactored to sync wrapper + `handleRequest()` with `.catch()` that writes a clean 500.
+- **Router: `res.headersSent` not guarded** — if `pump()` threw after `res.writeHead(200)` was already called, the failover loop tried `res.writeHead(503)` and threw "Cannot set headers after they are sent". Added `if (res.headersSent) break` and `if (!responded && !res.headersSent)` guards.
+
+---
+
+## 0.1.81
+
+### Added
+
+- **`--router` mode** — start an OpenAI-compatible HTTP gateway server that selects the best available provider/model and supports automatic failover. Use `--port <n>` (or `$PORT`) to set the port (default 3000). Supports streaming (SSE proxy), tier filters (`--tier`, `--best`), config profiles (`--profile`), and provider enable/disable state from config.
+- **Endpoints:** `GET /health`, `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/completions`.
+- **OpenClaw gateway config:** Point OpenClaw at `http://localhost:3000` with `api: "openai-completions"` and `authHeader: false` — no API key needed on the client side.
+- **README:** Added "Router Mode" section with Quick Start, endpoint reference, OpenClaw configuration, and two-instance examples.
 
 ---
 

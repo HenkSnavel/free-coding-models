@@ -78,6 +78,8 @@
  *   - --fiable: Analyze 10s and output the most reliable model
  *   - --no-telemetry: Disable anonymous usage analytics for this run
  *   - --tier S/A/B/C: Filter models by tier letter (S=S+/S, A=A+/A/A-, B=B+/B, C=C)
+ *   - --router: Start an OpenAI-compatible HTTP gateway server (see lib/router/index.js)
+ *   - --port <n>: HTTP port for --router mode (default 3000, also reads $PORT)
  *
  *   @see {@link https://build.nvidia.com} NVIDIA API key generation
  *   @see {@link https://github.com/opencode-ai/opencode} OpenCode repository
@@ -2648,6 +2650,14 @@ async function main() {
       process.exit(1)
     }
     saveConfig(config)
+  }
+
+  // 📖 --router mode: start the HTTP gateway server and keep it running.
+  // 📖 Skips the TUI and API-key wizard — the router works with whatever keys are configured.
+  if (cliArgs.routerMode) {
+    const { startRouter } = await import('../lib/router/index.js')
+    startRouter(config, cliArgs)
+    return
   }
 
   // 📖 Check if any provider has a key — if not, run the first-time setup wizard
